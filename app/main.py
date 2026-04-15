@@ -1,5 +1,6 @@
 from fastapi import FastAPI
 
+from app.api.routes.health import router as health_router
 from app.core.config import settings
 
 app = FastAPI(
@@ -9,13 +10,4 @@ app = FastAPI(
     redoc_url="/redoc",
 )
 
-
-@app.get("/health")
-def healthcheck() -> dict[str, str | int]:
-    return {
-        "status": "ok",
-        "service": "wvtechsolutions-backend",
-        "environment": settings.app_env,
-        "timezone": settings.app_timezone,
-        "port": settings.app_port,
-    }
+app.include_router(health_router)
