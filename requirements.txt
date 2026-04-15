@@ -4,3 +4,4 @@ email-validator
 sqlalchemy
 alembic
 psycopg[binary]
+python-dotenv
