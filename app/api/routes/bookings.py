@@ -1,4 +1,4 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException, status
 
 from app.schemas.bookings import BookingRequestCreate, BookingRequestCreated
 
@@ -44,8 +44,23 @@ def list_booking_slots() -> dict[str, list[dict[str, str]]]:
     }
 
 
+def get_slot_by_id(slot_id: str) -> dict[str, str] | None:
+    for slot in STATIC_SLOTS:
+        if slot["id"] == slot_id:
+            return slot
+    return None
+
+
 @router.post("/requests", response_model=BookingRequestCreated)
 def create_booking_request(payload: BookingRequestCreate) -> BookingRequestCreated:
+    selected_slot = get_slot_by_id(payload.slot_id)
+
+    if selected_slot is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Horário selecionado não encontrado",
+        )
+
     return BookingRequestCreated(
         status="received",
         message="Solicitação recebida com sucesso",
