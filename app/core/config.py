@@ -18,6 +18,10 @@ class Settings:
     app_host: str = os.getenv("APP_HOST", "127.0.0.1")
     app_port: int = int(os.getenv("APP_PORT", "8000"))
     app_timezone: str = os.getenv("APP_TIMEZONE", "America/Sao_Paulo")
+    database_url: str = os.getenv(
+        "DATABASE_URL",
+        "postgresql+psycopg://postgres:postgres@localhost:5432/wvtechsolutions",
+    )
 
 
 settings = Settings()
