@@ -1,6 +1,21 @@
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
 
+class BookingSlotSummary(BaseModel):
+    id: str = Field(..., description="Identificador do horário")
+    date: str = Field(..., description="Data do horário")
+    start_time: str = Field(..., description="Hora inicial")
+    end_time: str = Field(..., description="Hora final")
+    label: str = Field(..., description="Rótulo formatado para exibição")
+
+
+class BookingSlotListResponse(BaseModel):
+    slots: list[BookingSlotSummary] = Field(
+        ...,
+        description="Lista de horários disponíveis para agendamento",
+    )
+
+
 class BookingRequestCreate(BaseModel):
     model_config = ConfigDict(str_strip_whitespace=True)
 
@@ -42,3 +57,4 @@ class BookingRequestCreated(BaseModel):
     email: EmailStr = Field(..., description="Email do visitante")
     phone: str = Field(..., description="Telefone do visitante")
     subject_summary: str = Field(..., description="Resumo do assunto da reunião")
+    slot: BookingSlotSummary = Field(..., description="Resumo do horário selecionado")

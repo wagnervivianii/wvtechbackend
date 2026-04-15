@@ -3,6 +3,7 @@ from fastapi import APIRouter, HTTPException, status
 from app.schemas.bookings import (
     BookingRequestCreate,
     BookingRequestCreated,
+    BookingSlotListResponse,
     BookingSlotSummary,
 )
 from app.services.booking_slots import (
@@ -21,11 +22,10 @@ def bookings_healthcheck() -> dict[str, str]:
     }
 
 
-@router.get("/slots")
-def list_booking_slots() -> dict[str, list[dict[str, str]]]:
-    return {
-        "slots": list_static_booking_slots(),
-    }
+@router.get("/slots", response_model=BookingSlotListResponse)
+def list_booking_slots() -> BookingSlotListResponse:
+    slots = [BookingSlotSummary(**slot) for slot in list_static_booking_slots()]
+    return BookingSlotListResponse(slots=slots)
 
 
 @router.post("/requests", response_model=BookingRequestCreated)
