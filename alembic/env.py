@@ -13,6 +13,7 @@ if str(BASE_DIR) not in sys.path:
 
 from app.core.config import settings
 from app.db.base import Base
+from app.models.booking_request import BookingRequest  # noqa: F401
 
 config = context.config
 
