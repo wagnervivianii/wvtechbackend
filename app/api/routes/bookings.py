@@ -6,10 +6,9 @@ from app.schemas.bookings import (
     BookingRequestCreate,
     BookingRequestCreated,
     BookingSlotListResponse,
-    BookingSlotSummary,
 )
 from app.services.booking_requests import create_booking_request
-from app.services.booking_slots import list_static_booking_slots
+from app.services.booking_slots import list_dynamic_booking_slots
 
 router = APIRouter(prefix="/bookings", tags=["bookings"])
 
@@ -23,9 +22,10 @@ def bookings_healthcheck() -> dict[str, str]:
 
 
 @router.get("/slots", response_model=BookingSlotListResponse)
-def list_booking_slots() -> BookingSlotListResponse:
-    slots = [BookingSlotSummary(**slot) for slot in list_static_booking_slots()]
-    return BookingSlotListResponse(slots=slots)
+def list_booking_slots(
+    db: Session = Depends(get_db),
+) -> BookingSlotListResponse:
+    return BookingSlotListResponse(slots=list_dynamic_booking_slots(db=db))
 
 
 @router.post("/requests", response_model=BookingRequestCreated)
