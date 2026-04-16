@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections import defaultdict
-from datetime import date, datetime, timedelta, time
+from datetime import date, datetime, time, timedelta
 from zoneinfo import ZoneInfo
 
 from fastapi import HTTPException, status
@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.models.availability_day import AvailabilityDay
 from app.models.availability_slot import AvailabilitySlot
+from app.models.booking_request import BookingRequest
 from app.schemas.admin_availability import (
     AdminAvailabilityDayItem,
     AdminAvailabilityDayToggleRequest,
@@ -19,12 +20,20 @@ from app.schemas.admin_availability import (
     AdminAvailabilitySlotCreateRequest,
     AdminAvailabilitySlotItem,
     AdminAvailabilitySlotUpdateRequest,
+    AdminBookingHistoryItem,
 )
 from app.services.availability import MONTH_LABELS, WEEKDAY_LABELS
 
 
+TERMINAL_MEETING_STATUSES = {"completed", "cancelled", "no_show"}
+
+
+def _now_local() -> datetime:
+    return datetime.now(ZoneInfo(settings.app_timezone))
+
+
 def _window_limits() -> tuple[date, date]:
-    now = datetime.now(ZoneInfo(settings.app_timezone))
+    now = _now_local()
     window_start = now.date().replace(day=1)
 
     if window_start.month == 12:
@@ -73,6 +82,22 @@ def _get_slot_or_404(db: Session, slot_id: int) -> AvailabilitySlot:
     return slot
 
 
+def _slot_starts_at(available_date: date, start_time: time) -> datetime:
+    return datetime.combine(
+        available_date,
+        start_time,
+        tzinfo=ZoneInfo(settings.app_timezone),
+    )
+
+
+def _slot_is_visible_in_active_agenda(
+    available_date: date,
+    slot: AvailabilitySlot,
+    now_local: datetime,
+) -> bool:
+    return _slot_starts_at(available_date, slot.start_time) > now_local
+
+
 def _serialize_slot(slot: AvailabilitySlot) -> AdminAvailabilitySlotItem:
     start_text = slot.start_time.strftime("%H:%M")
     end_text = slot.end_time.strftime("%H:%M")
@@ -112,11 +137,71 @@ def _serialize_day(
     )
 
 
+def _serialize_history_item(booking: BookingRequest) -> AdminBookingHistoryItem:
+    start_text = booking.start_time.strftime("%H:%M") if booking.start_time else None
+    end_text = booking.end_time.strftime("%H:%M") if booking.end_time else None
+
+    if booking.booking_date and start_text and end_text:
+        display_label = f"{booking.booking_date.strftime('%d/%m/%Y')} • {start_text} às {end_text}"
+    elif booking.booking_date:
+        display_label = booking.booking_date.strftime("%d/%m/%Y")
+    else:
+        display_label = f"Solicitação #{booking.id}"
+
+    return AdminBookingHistoryItem(
+        id=booking.id,
+        booking_date=booking.booking_date.isoformat() if booking.booking_date else None,
+        start_time=start_text,
+        end_time=end_text,
+        display_label=display_label,
+        status=booking.status,
+        meeting_status=booking.meeting_status,
+        name=booking.name,
+        email=booking.email,
+        phone=booking.phone,
+        subject_summary=booking.subject_summary,
+        meet_url=booking.meet_url,
+        meeting_notes=booking.meeting_notes,
+        transcript_summary=booking.transcript_summary,
+        has_transcript=bool(booking.transcript_text or booking.transcript_summary),
+        created_at=booking.created_at.isoformat(),
+    )
+
+
+def _booking_belongs_to_history(booking: BookingRequest, now_local: datetime) -> bool:
+    if booking.meeting_status in TERMINAL_MEETING_STATUSES:
+        return True
+
+    if booking.booking_date is None:
+        return False
+
+    if booking.end_time is not None:
+        booking_end = datetime.combine(
+            booking.booking_date,
+            booking.end_time,
+            tzinfo=ZoneInfo(settings.app_timezone),
+        )
+        return booking_end <= now_local
+
+    if booking.start_time is not None:
+        booking_start = datetime.combine(
+            booking.booking_date,
+            booking.start_time,
+            tzinfo=ZoneInfo(settings.app_timezone),
+        )
+        return booking_start <= now_local
+
+    return booking.booking_date < now_local.date()
+
+
 def _load_days_with_slots(db: Session) -> list[AdminAvailabilityDayItem]:
-    window_start, window_end = _window_limits()
+    now_local = _now_local()
+    today = now_local.date()
+    _, window_end = _window_limits()
+
     days = db.scalars(
         select(AvailabilityDay)
-        .where(AvailabilityDay.available_date >= window_start)
+        .where(AvailabilityDay.available_date >= today)
         .where(AvailabilityDay.available_date <= window_end)
         .order_by(AvailabilityDay.available_date.asc())
     ).all()
@@ -139,17 +224,56 @@ def _load_days_with_slots(db: Session) -> list[AdminAvailabilityDayItem]:
     for slot in slots:
         slots_by_day[slot.availability_day_id].append(slot)
 
-    return [_serialize_day(day=day, slots=slots_by_day.get(day.id, [])) for day in days]
+    items: list[AdminAvailabilityDayItem] = []
+    for day in days:
+        day_slots = slots_by_day.get(day.id, [])
+        visible_slots = [
+            slot
+            for slot in day_slots
+            if _slot_is_visible_in_active_agenda(day.available_date, slot, now_local)
+        ]
+
+        if day.available_date == today and day_slots and not visible_slots:
+            continue
+
+        items.append(_serialize_day(day=day, slots=visible_slots))
+
+    return items
+
+
+def _load_booking_history(db: Session) -> list[AdminBookingHistoryItem]:
+    now_local = _now_local()
+    bookings = db.scalars(
+        select(BookingRequest).order_by(
+            BookingRequest.booking_date.desc(),
+            BookingRequest.start_time.desc(),
+            BookingRequest.created_at.desc(),
+        )
+    ).all()
+
+    history_items: list[AdminBookingHistoryItem] = []
+    for booking in bookings:
+        if _booking_belongs_to_history(booking, now_local):
+            history_items.append(_serialize_history_item(booking))
+
+    return history_items
 
 
 def _build_day_response(db: Session, day_id: int) -> AdminAvailabilityDayItem:
+    now_local = _now_local()
     day = _get_day_or_404(db, day_id)
     slots = db.scalars(
         select(AvailabilitySlot)
         .where(AvailabilitySlot.availability_day_id == day.id)
         .order_by(AvailabilitySlot.start_time.asc(), AvailabilitySlot.end_time.asc())
     ).all()
-    return _serialize_day(day=day, slots=slots)
+
+    visible_slots = [
+        slot
+        for slot in slots
+        if _slot_is_visible_in_active_agenda(day.available_date, slot, now_local)
+    ]
+    return _serialize_day(day=day, slots=visible_slots)
 
 
 def _ensure_valid_time_range(start_time: time, end_time: time) -> None:
@@ -189,7 +313,10 @@ def _ensure_slot_without_overlap(
 
 
 def list_admin_availability(db: Session) -> AdminAvailabilityListResponse:
-    return AdminAvailabilityListResponse(days=_load_days_with_slots(db))
+    return AdminAvailabilityListResponse(
+        days=_load_days_with_slots(db),
+        history=_load_booking_history(db),
+    )
 
 
 def upsert_admin_day(

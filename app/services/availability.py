@@ -4,7 +4,7 @@ from collections import defaultdict
 from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
-from sqlalchemy import Select, select
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
@@ -44,8 +44,12 @@ MONTH_LABELS = [
 ]
 
 
+def _now_local() -> datetime:
+    return datetime.now(ZoneInfo(settings.app_timezone))
+
+
 def _window_limits() -> tuple[date, date]:
-    now = datetime.now(ZoneInfo(settings.app_timezone))
+    now = _now_local()
     window_start = now.date().replace(day=1)
 
     if window_start.month == 12:
@@ -62,15 +66,16 @@ def _window_limits() -> tuple[date, date]:
     return window_start, window_end
 
 
-def _active_days_query() -> Select[tuple[AvailabilityDay]]:
-    window_start, window_end = _window_limits()
-    return (
-        select(AvailabilityDay)
-        .where(AvailabilityDay.is_active.is_(True))
-        .where(AvailabilityDay.available_date >= window_start)
-        .where(AvailabilityDay.available_date <= window_end)
-        .order_by(AvailabilityDay.available_date.asc())
+def _slot_starts_at(available_date: date, start_time) -> datetime:
+    return datetime.combine(
+        available_date,
+        start_time,
+        tzinfo=ZoneInfo(settings.app_timezone),
     )
+
+
+def _slot_is_future(available_date: date, slot: AvailabilitySlot, now_local: datetime) -> bool:
+    return _slot_starts_at(available_date, slot.start_time) > now_local
 
 
 def _slot_summary(slot: AvailabilitySlot, available_date: date) -> BookingSlotSummary:
@@ -89,11 +94,61 @@ def _slot_summary(slot: AvailabilitySlot, available_date: date) -> BookingSlotSu
     )
 
 
+def _load_public_days_with_slots(
+    db: Session,
+) -> list[tuple[AvailabilityDay, list[AvailabilitySlot]]]:
+    now_local = _now_local()
+    today = now_local.date()
+    _, window_end = _window_limits()
+
+    days = db.scalars(
+        select(AvailabilityDay)
+        .where(AvailabilityDay.is_active.is_(True))
+        .where(AvailabilityDay.available_date >= today)
+        .where(AvailabilityDay.available_date <= window_end)
+        .order_by(AvailabilityDay.available_date.asc())
+    ).all()
+
+    if not days:
+        return []
+
+    day_ids = [day.id for day in days]
+    slots = db.scalars(
+        select(AvailabilitySlot)
+        .where(AvailabilitySlot.availability_day_id.in_(day_ids))
+        .where(AvailabilitySlot.is_active.is_(True))
+        .order_by(
+            AvailabilitySlot.availability_day_id.asc(),
+            AvailabilitySlot.start_time.asc(),
+            AvailabilitySlot.end_time.asc(),
+        )
+    ).all()
+
+    slots_by_day: dict[int, list[AvailabilitySlot]] = defaultdict(list)
+    for slot in slots:
+        slots_by_day[slot.availability_day_id].append(slot)
+
+    visible_days: list[tuple[AvailabilityDay, list[AvailabilitySlot]]] = []
+    for day in days:
+        visible_slots = [
+            slot
+            for slot in slots_by_day.get(day.id, [])
+            if _slot_is_future(day.available_date, slot, now_local)
+        ]
+        if visible_slots:
+            visible_days.append((day, visible_slots))
+
+    return visible_days
+
+
 def list_availability_calendar(db: Session) -> AvailabilityCalendarResponse:
-    days = db.scalars(_active_days_query()).all()
+    days_with_slots = _load_public_days_with_slots(db)
 
     grouped: dict[tuple[int, int], list[AvailabilityCalendarDay]] = defaultdict(list)
-    for day in days:
+    for day, visible_slots in days_with_slots:
+        if not visible_slots:
+            continue
+
         grouped[(day.available_date.year, day.available_date.month)].append(
             AvailabilityCalendarDay(
                 date=day.available_date.isoformat(),
@@ -119,8 +174,11 @@ def list_availability_calendar(db: Session) -> AvailabilityCalendarResponse:
 
 
 def list_availability_slots(db: Session, selected_date: date) -> AvailabilitySlotListResponse:
-    window_start, window_end = _window_limits()
-    if selected_date < window_start or selected_date > window_end:
+    now_local = _now_local()
+    today = now_local.date()
+    _, window_end = _window_limits()
+
+    if selected_date < today or selected_date > window_end:
         return AvailabilitySlotListResponse(date=selected_date.isoformat(), slots=[])
 
     day = db.scalar(
@@ -139,30 +197,24 @@ def list_availability_slots(db: Session, selected_date: date) -> AvailabilitySlo
         .order_by(AvailabilitySlot.start_time.asc())
     ).all()
 
+    visible_slots = [
+        slot
+        for slot in slots
+        if _slot_is_future(day.available_date, slot, now_local)
+    ]
+
     return AvailabilitySlotListResponse(
         date=selected_date.isoformat(),
-        slots=[_slot_summary(slot=slot, available_date=day.available_date) for slot in slots],
+        slots=[_slot_summary(slot=slot, available_date=day.available_date) for slot in visible_slots],
     )
 
 
 def list_booking_slots_flat(db: Session) -> list[BookingSlotSummary]:
-    days = db.scalars(_active_days_query()).all()
-    if not days:
-        return []
-
-    day_map = {day.id: day for day in days}
-    slots = db.scalars(
-        select(AvailabilitySlot)
-        .where(AvailabilitySlot.availability_day_id.in_(day_map.keys()))
-        .where(AvailabilitySlot.is_active.is_(True))
-        .order_by(AvailabilitySlot.availability_day_id.asc(), AvailabilitySlot.start_time.asc())
-    ).all()
+    days_with_slots = _load_public_days_with_slots(db)
 
     summaries: list[BookingSlotSummary] = []
-    for slot in slots:
-        day = day_map.get(slot.availability_day_id)
-        if day is None:
-            continue
-        summaries.append(_slot_summary(slot=slot, available_date=day.available_date))
+    for day, visible_slots in days_with_slots:
+        for slot in visible_slots:
+            summaries.append(_slot_summary(slot=slot, available_date=day.available_date))
 
     return summaries

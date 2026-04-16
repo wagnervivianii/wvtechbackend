@@ -70,6 +70,17 @@ def create_booking_request(
             detail="Horário fora da janela atual de agendamento",
         )
 
+    slot_starts_at = datetime.combine(
+        day.available_date,
+        slot.start_time,
+        tzinfo=ZoneInfo(settings.app_timezone),
+    )
+    if slot_starts_at <= now:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Horário selecionado já expirou",
+        )
+
     booking_request = BookingRequest(
         slot_id=str(slot.id),
         availability_slot_id=slot.id,
@@ -81,6 +92,7 @@ def create_booking_request(
         phone=payload.phone,
         subject_summary=payload.subject_summary,
         status="pending_contact_confirmation",
+        meeting_status="scheduled",
     )
 
     db.add(booking_request)

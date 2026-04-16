@@ -31,6 +31,20 @@ class BookingRequest(Base):
         server_default="pending_contact_confirmation",
         index=True,
     )
+    meeting_status: Mapped[str] = mapped_column(
+        String(40),
+        nullable=False,
+        default="scheduled",
+        server_default="scheduled",
+        index=True,
+    )
+    meet_event_id: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
+    meet_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    meeting_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    transcript_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    transcript_summary: Mapped[str | None] = mapped_column(Text, nullable=True)
+    meeting_started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    meeting_ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,

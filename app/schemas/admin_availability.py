@@ -28,8 +28,28 @@ class AdminAvailabilityDayItem(BaseModel):
     slots: list[AdminAvailabilitySlotItem] = Field(..., description="Horários vinculados ao dia")
 
 
+class AdminBookingHistoryItem(BaseModel):
+    id: int = Field(..., description="Identificador da solicitação")
+    booking_date: str | None = Field(None, description="Data da reunião")
+    start_time: str | None = Field(None, description="Hora inicial da reunião")
+    end_time: str | None = Field(None, description="Hora final da reunião")
+    display_label: str = Field(..., description="Rótulo consolidado da reunião")
+    status: str = Field(..., description="Status operacional da solicitação")
+    meeting_status: str = Field(..., description="Status da reunião em si")
+    name: str = Field(..., description="Nome do contato")
+    email: str = Field(..., description="Email do contato")
+    phone: str = Field(..., description="Telefone do contato")
+    subject_summary: str = Field(..., description="Resumo do assunto")
+    meet_url: str | None = Field(None, description="Link do Google Meet, quando existir")
+    meeting_notes: str | None = Field(None, description="Observações internas da reunião")
+    transcript_summary: str | None = Field(None, description="Resumo da transcrição")
+    has_transcript: bool = Field(..., description="Indica se já existe transcrição vinculada")
+    created_at: str = Field(..., description="Data de criação da solicitação")
+
+
 class AdminAvailabilityListResponse(BaseModel):
-    days: list[AdminAvailabilityDayItem] = Field(..., description="Dias disponíveis para gestão administrativa")
+    days: list[AdminAvailabilityDayItem] = Field(..., description="Dias ativos para gestão administrativa")
+    history: list[AdminBookingHistoryItem] = Field(..., description="Histórico de reuniões já solicitadas")
 
 
 class AdminAvailabilityDayUpsertRequest(BaseModel):
