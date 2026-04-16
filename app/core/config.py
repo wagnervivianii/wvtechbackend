@@ -22,6 +22,14 @@ class Settings:
         "DATABASE_URL",
         "postgresql+psycopg://postgres:postgres@localhost:5432/wvtechsolutions",
     )
+    admin_username: str = os.getenv("ADMIN_USERNAME", "").strip()
+    admin_password: str = os.getenv("ADMIN_PASSWORD", "")
+    admin_token_secret: str = os.getenv("ADMIN_TOKEN_SECRET", "").strip()
+    admin_token_ttl_minutes: int = int(os.getenv("ADMIN_TOKEN_TTL_MINUTES", "480"))
+    admin_token_issuer: str = os.getenv(
+        "ADMIN_TOKEN_ISSUER",
+        "wvtechsolutions-admin",
+    )
 
 
 settings = Settings()
