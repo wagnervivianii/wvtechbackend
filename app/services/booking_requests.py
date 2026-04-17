@@ -14,6 +14,7 @@ from app.schemas.bookings import (
     BookingRequestCreated,
     BookingSlotSummary,
 )
+from app.services.booking_contact_policy import find_latest_contact_lock
 from app.services.booking_request_status import BLOCKING_BOOKING_REQUEST_STATUSES
 
 
@@ -103,6 +104,22 @@ def create_booking_request(
             ),
         )
 
+    existing_contact_lock = find_latest_contact_lock(
+        db,
+        email=payload.email,
+        phone=payload.phone,
+    )
+
+    if existing_contact_lock is not None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                "Já existe uma solicitação ou reunião em andamento para este e-mail e telefone. "
+                "Depois que a reunião anterior acontecer, o administrador precisará liberar "
+                "um novo agendamento para você."
+            ),
+        )
+
     booking_request = BookingRequest(
         slot_id=str(slot.id),
         availability_slot_id=slot.id,
@@ -115,6 +132,7 @@ def create_booking_request(
         subject_summary=payload.subject_summary,
         status="pending_contact_confirmation",
         meeting_status="scheduled",
+        can_schedule_again=False,
     )
 
     db.add(booking_request)

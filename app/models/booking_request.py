@@ -1,6 +1,6 @@
 from datetime import date, datetime, time
 
-from sqlalchemy import Date, DateTime, ForeignKey, Integer, String, Text, Time, func
+from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Integer, String, Text, Time, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
@@ -45,6 +45,13 @@ class BookingRequest(Base):
     transcript_summary: Mapped[str | None] = mapped_column(Text, nullable=True)
     meeting_started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     meeting_ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    can_schedule_again: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=False,
+        server_default="false",
+        index=True,
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,

@@ -45,6 +45,10 @@ class AdminBookingHistoryItem(BaseModel):
     transcript_summary: str | None = Field(None, description="Resumo da transcrição")
     has_transcript: bool = Field(..., description="Indica se já existe transcrição vinculada")
     created_at: str = Field(..., description="Data de criação da solicitação")
+    can_schedule_again: bool = Field(
+        ...,
+        description="Indica se o contato já pode abrir uma nova solicitação",
+    )
 
 
 class AdminAvailabilityListResponse(BaseModel):

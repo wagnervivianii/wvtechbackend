@@ -165,6 +165,7 @@ def _serialize_history_item(booking: BookingRequest) -> AdminBookingHistoryItem:
         transcript_summary=booking.transcript_summary,
         has_transcript=bool(booking.transcript_text or booking.transcript_summary),
         created_at=booking.created_at.isoformat(),
+        can_schedule_again=booking.can_schedule_again,
     )
 
 
