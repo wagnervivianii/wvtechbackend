@@ -30,6 +30,13 @@ class Settings:
         "ADMIN_TOKEN_ISSUER",
         "wvtechsolutions-admin",
     )
+    booking_confirmation_ttl_hours: int = int(
+        os.getenv("BOOKING_CONFIRMATION_TTL_HOURS", "48")
+    )
+    booking_confirmation_path_prefix: str = os.getenv(
+        "BOOKING_CONFIRMATION_PATH_PREFIX",
+        "/agendar/confirmar",
+    ).strip() or "/agendar/confirmar"
 
 
 settings = Settings()

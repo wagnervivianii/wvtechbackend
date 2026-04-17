@@ -14,6 +14,10 @@ from app.schemas.bookings import (
     BookingRequestCreated,
     BookingSlotSummary,
 )
+from app.services.booking_confirmations import (
+    build_confirmation_preview_path,
+    create_booking_confirmation,
+)
 from app.services.booking_contact_policy import find_latest_contact_lock
 from app.services.booking_request_status import BLOCKING_BOOKING_REQUEST_STATUSES
 
@@ -136,11 +140,19 @@ def create_booking_request(
     )
 
     db.add(booking_request)
+    db.flush()
+
+    confirmation_preview_token = create_booking_confirmation(
+        db,
+        booking=booking_request,
+    )
+
     db.commit()
     db.refresh(booking_request)
 
     start_text = slot.start_time.strftime("%H:%M")
     end_text = slot.end_time.strftime("%H:%M")
+    expose_preview = settings.app_env.lower() != "production"
 
     return BookingRequestCreated(
         status=booking_request.status,
@@ -161,5 +173,11 @@ def create_booking_request(
             start_time=start_text,
             end_time=end_text,
             label=f"{day.available_date.strftime('%d/%m/%Y')} • {start_text} às {end_text}",
+        ),
+        confirmation_preview_token=(confirmation_preview_token if expose_preview else None),
+        confirmation_preview_path=(
+            build_confirmation_preview_path(confirmation_preview_token)
+            if expose_preview
+            else None
         ),
     )

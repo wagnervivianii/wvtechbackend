@@ -93,3 +93,18 @@ class BookingRequestCreated(BaseModel):
     phone: str = Field(..., description="Telefone do visitante")
     subject_summary: str = Field(..., description="Resumo do assunto da reunião")
     slot: BookingSlotSummary = Field(..., description="Resumo do horário selecionado")
+    confirmation_preview_token: str | None = Field(
+        None,
+        description="Token bruto de confirmação visível apenas em ambientes não produtivos",
+    )
+    confirmation_preview_path: str | None = Field(
+        None,
+        description="Caminho de confirmação visível apenas em ambientes não produtivos",
+    )
+
+
+class BookingEmailConfirmationResponse(BaseModel):
+    booking_id: int = Field(..., description="Identificador interno da solicitação")
+    status: str = Field(..., description="Status atualizado da solicitação")
+    message: str = Field(..., description="Mensagem de retorno da confirmação")
+    confirmed_at: str = Field(..., description="Data e hora da confirmação do email")

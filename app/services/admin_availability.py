@@ -12,6 +12,8 @@ from app.core.config import settings
 from app.models.availability_day import AvailabilityDay
 from app.models.availability_slot import AvailabilitySlot
 from app.models.booking_request import BookingRequest
+from app.models.client_workspace import ClientWorkspace
+from app.models.client_workspace_meeting import ClientWorkspaceMeeting
 from app.schemas.admin_availability import (
     AdminAvailabilityDayItem,
     AdminAvailabilityDayToggleRequest,
@@ -137,7 +139,10 @@ def _serialize_day(
     )
 
 
-def _serialize_history_item(booking: BookingRequest) -> AdminBookingHistoryItem:
+def _serialize_history_item(
+    booking: BookingRequest,
+    workspace: ClientWorkspace | None,
+) -> AdminBookingHistoryItem:
     start_text = booking.start_time.strftime("%H:%M") if booking.start_time else None
     end_text = booking.end_time.strftime("%H:%M") if booking.end_time else None
 
@@ -166,6 +171,8 @@ def _serialize_history_item(booking: BookingRequest) -> AdminBookingHistoryItem:
         has_transcript=bool(booking.transcript_text or booking.transcript_summary),
         created_at=booking.created_at.isoformat(),
         can_schedule_again=booking.can_schedule_again,
+        has_client_workspace=workspace is not None,
+        client_workspace_status=workspace.workspace_status if workspace else None,
     )
 
 
@@ -252,10 +259,38 @@ def _load_booking_history(db: Session) -> list[AdminBookingHistoryItem]:
         )
     ).all()
 
+    if not bookings:
+        return []
+
+    booking_ids = [booking.id for booking in bookings]
+    workspace_meetings = db.scalars(
+        select(ClientWorkspaceMeeting).where(
+            ClientWorkspaceMeeting.booking_request_id.in_(booking_ids)
+        )
+    ).all()
+
+    workspace_ids = [item.workspace_id for item in workspace_meetings]
+    workspaces: list[ClientWorkspace] = []
+    if workspace_ids:
+        workspaces = db.scalars(
+            select(ClientWorkspace).where(ClientWorkspace.id.in_(workspace_ids))
+        ).all()
+
+    workspace_by_id = {workspace.id: workspace for workspace in workspaces}
+    workspace_by_booking_id = {
+        meeting.booking_request_id: workspace_by_id.get(meeting.workspace_id)
+        for meeting in workspace_meetings
+    }
+
     history_items: list[AdminBookingHistoryItem] = []
     for booking in bookings:
         if _booking_belongs_to_history(booking, now_local):
-            history_items.append(_serialize_history_item(booking))
+            history_items.append(
+                _serialize_history_item(
+                    booking,
+                    workspace_by_booking_id.get(booking.id),
+                )
+            )
 
     return history_items
 
@@ -409,13 +444,19 @@ def update_admin_slot(
     slot.end_time = payload.end_time
     slot.timezone_name = payload.timezone_name
     slot.is_active = payload.is_active
+
     db.commit()
     return _build_day_response(db, day.id)
 
-
-def delete_admin_slot(db: Session, *, slot_id: int) -> AdminAvailabilityDayItem:
+def delete_admin_slot(
+    db: Session,
+    *,
+    slot_id: int,
+) -> AdminAvailabilityDayItem:
     slot = _get_slot_or_404(db, slot_id)
     day_id = slot.availability_day_id
+
     db.delete(slot)
     db.commit()
+
     return _build_day_response(db, day_id)

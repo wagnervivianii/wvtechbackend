@@ -16,6 +16,10 @@ from app.db.base import Base
 from app.models.availability_day import AvailabilityDay  # noqa: F401
 from app.models.availability_slot import AvailabilitySlot  # noqa: F401
 from app.models.booking_request import BookingRequest  # noqa: F401
+from app.models.booking_request_confirmation import BookingRequestConfirmation  # noqa: F401
+from app.models.client_workspace import ClientWorkspace  # noqa: F401
+from app.models.client_workspace_invite import ClientWorkspaceInvite  # noqa: F401
+from app.models.client_workspace_meeting import ClientWorkspaceMeeting  # noqa: F401
 
 config = context.config
 

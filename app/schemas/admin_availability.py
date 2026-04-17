@@ -45,9 +45,20 @@ class AdminBookingHistoryItem(BaseModel):
     transcript_summary: str | None = Field(None, description="Resumo da transcrição")
     has_transcript: bool = Field(..., description="Indica se já existe transcrição vinculada")
     created_at: str = Field(..., description="Data de criação da solicitação")
+    contact_confirmed_at: str | None = Field(None, description="Data de confirmação do email")
+    admin_reviewed_at: str | None = Field(None, description="Data da análise administrativa")
+    rejection_reason: str | None = Field(None, description="Motivo de rejeição, quando houver")
     can_schedule_again: bool = Field(
         ...,
         description="Indica se o contato já pode abrir uma nova solicitação",
+    )
+    has_client_workspace: bool = Field(
+        ...,
+        description="Indica se já existe workspace provisionado para esta solicitação",
+    )
+    client_workspace_status: str | None = Field(
+        None,
+        description="Status do workspace do cliente, quando já existir",
     )
 
 
