@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.models.availability_day import AvailabilityDay
 from app.models.availability_slot import AvailabilitySlot
+from app.models.booking_request import BookingRequest
 from app.schemas.availability import (
     AvailabilityCalendarDay,
     AvailabilityCalendarMonth,
@@ -17,6 +18,7 @@ from app.schemas.availability import (
     AvailabilitySlotListResponse,
 )
 from app.schemas.bookings import BookingSlotSummary
+from app.services.booking_request_status import BLOCKING_BOOKING_REQUEST_STATUSES
 
 WEEKDAY_LABELS = [
     "segunda",
@@ -94,6 +96,24 @@ def _slot_summary(slot: AvailabilitySlot, available_date: date) -> BookingSlotSu
     )
 
 
+def _load_blocked_slot_ids(
+    db: Session,
+    *,
+    slot_ids: list[int],
+) -> set[int]:
+    if not slot_ids:
+        return set()
+
+    blocked_ids = db.scalars(
+        select(BookingRequest.availability_slot_id)
+        .where(BookingRequest.availability_slot_id.in_(slot_ids))
+        .where(BookingRequest.status.in_(BLOCKING_BOOKING_REQUEST_STATUSES))
+        .distinct()
+    ).all()
+
+    return {slot_id for slot_id in blocked_ids if slot_id is not None}
+
+
 def _load_public_days_with_slots(
     db: Session,
 ) -> list[tuple[AvailabilityDay, list[AvailabilitySlot]]]:
@@ -124,8 +144,15 @@ def _load_public_days_with_slots(
         )
     ).all()
 
+    blocked_slot_ids = _load_blocked_slot_ids(
+        db,
+        slot_ids=[slot.id for slot in slots],
+    )
+
     slots_by_day: dict[int, list[AvailabilitySlot]] = defaultdict(list)
     for slot in slots:
+        if slot.id in blocked_slot_ids:
+            continue
         slots_by_day[slot.availability_day_id].append(slot)
 
     visible_days: list[tuple[AvailabilityDay, list[AvailabilitySlot]]] = []
@@ -197,10 +224,16 @@ def list_availability_slots(db: Session, selected_date: date) -> AvailabilitySlo
         .order_by(AvailabilitySlot.start_time.asc())
     ).all()
 
+    blocked_slot_ids = _load_blocked_slot_ids(
+        db,
+        slot_ids=[slot.id for slot in slots],
+    )
+
     visible_slots = [
         slot
         for slot in slots
-        if _slot_is_future(day.available_date, slot, now_local)
+        if slot.id not in blocked_slot_ids
+        and _slot_is_future(day.available_date, slot, now_local)
     ]
 
     return AvailabilitySlotListResponse(

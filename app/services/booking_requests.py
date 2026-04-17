@@ -14,6 +14,7 @@ from app.schemas.bookings import (
     BookingRequestCreated,
     BookingSlotSummary,
 )
+from app.services.booking_request_status import BLOCKING_BOOKING_REQUEST_STATUSES
 
 
 def create_booking_request(
@@ -55,9 +56,14 @@ def create_booking_request(
     now = datetime.now(ZoneInfo(settings.app_timezone))
     first_day_of_current_month = now.date().replace(day=1)
     if first_day_of_current_month.month == 12:
-        next_month = first_day_of_current_month.replace(year=first_day_of_current_month.year + 1, month=1)
+        next_month = first_day_of_current_month.replace(
+            year=first_day_of_current_month.year + 1,
+            month=1,
+        )
     else:
-        next_month = first_day_of_current_month.replace(month=first_day_of_current_month.month + 1)
+        next_month = first_day_of_current_month.replace(
+            month=first_day_of_current_month.month + 1,
+        )
 
     if next_month.month == 12:
         month_after_next = next_month.replace(year=next_month.year + 1, month=1)
@@ -79,6 +85,22 @@ def create_booking_request(
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="Horário selecionado já expirou",
+        )
+
+    existing_blocking_request = db.scalar(
+        select(BookingRequest)
+        .where(BookingRequest.availability_slot_id == slot.id)
+        .where(BookingRequest.status.in_(BLOCKING_BOOKING_REQUEST_STATUSES))
+        .order_by(BookingRequest.created_at.desc())
+    )
+
+    if existing_blocking_request is not None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                "Este horário acabou de ser reservado e não está mais disponível. "
+                "Escolha outro horário para continuar."
+            ),
         )
 
     booking_request = BookingRequest(
@@ -104,7 +126,10 @@ def create_booking_request(
 
     return BookingRequestCreated(
         status=booking_request.status,
-        message="Solicitação recebida com sucesso",
+        message=(
+            "Solicitação recebida com sucesso. "
+            "O horário foi reservado e aguarda a confirmação do pedido."
+        ),
         slot_id=booking_request.slot_id,
         booking_date=day.available_date,
         name=booking_request.name,
