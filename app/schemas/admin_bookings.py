@@ -48,8 +48,6 @@ class AdminBookingPendingReviewListResponse(BaseModel):
 class AdminBookingApprovalRequest(BaseModel):
     model_config = ConfigDict(str_strip_whitespace=True)
 
-    meet_url: str | None = Field(None, max_length=500, description="Link do Google Meet")
-    meet_event_id: str | None = Field(None, max_length=255, description="ID do evento do Google Meet")
     meeting_notes: str | None = Field(None, max_length=4000, description="Observações internas da reunião")
     create_client_workspace: bool = Field(
         True,
@@ -69,6 +67,23 @@ class AdminBookingApprovalRequest(BaseModel):
         None,
         max_length=4000,
         description="Observações internas para o portal do cliente",
+    )
+
+
+
+
+class AdminBookingCancellationRequest(BaseModel):
+    model_config = ConfigDict(str_strip_whitespace=True)
+
+    cancellation_reason: str | None = Field(
+        None,
+        max_length=4000,
+        description='Motivo informado ao cliente no cancelamento',
+    )
+    meeting_notes: str | None = Field(
+        None,
+        max_length=4000,
+        description='Observações internas adicionais sobre o cancelamento',
     )
 
 

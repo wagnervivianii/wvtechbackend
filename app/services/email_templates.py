@@ -20,17 +20,13 @@ class BookingEmailContext:
     recipient_name: str
     booking_label: str
     subject_summary: str
+    meeting_date: str | None
+    meeting_time_label: str | None
 
 
 SUCCESS_MESSAGE = (
     'Recebemos a confirmação do seu endereço de e-mail e sua solicitação foi encaminhada '
     'para validação da nossa equipe.'
-)
-
-SUCCESS_NEXT_STEPS = (
-    'Após a análise, você receberá a confirmação da reunião, o link do Google Meet agendado, '
-    'uma mensagem de confirmação via WhatsApp e o acesso à sua área do cliente, onde ficarão '
-    'disponíveis os registros das reuniões e suas transcrições durante a vigência do projeto.'
 )
 
 
@@ -68,11 +64,13 @@ def build_confirmation_action_url(raw_token: str) -> str:
 def build_booking_context(booking: BookingRequest) -> BookingEmailContext:
     start_text = booking.start_time.strftime('%H:%M') if booking.start_time else None
     end_text = booking.end_time.strftime('%H:%M') if booking.end_time else None
+    meeting_date = booking.booking_date.strftime('%d/%m/%Y') if booking.booking_date else None
+    meeting_time_label = f'{start_text} às {end_text}' if start_text and end_text else None
 
-    if booking.booking_date and start_text and end_text:
-        booking_label = f"{booking.booking_date.strftime('%d/%m/%Y')} • {start_text} às {end_text}"
-    elif booking.booking_date:
-        booking_label = booking.booking_date.strftime('%d/%m/%Y')
+    if meeting_date and meeting_time_label:
+        booking_label = f"{meeting_date} • {meeting_time_label}"
+    elif meeting_date:
+        booking_label = meeting_date
     else:
         booking_label = f'Solicitação #{booking.id}'
 
@@ -80,6 +78,8 @@ def build_booking_context(booking: BookingRequest) -> BookingEmailContext:
         recipient_name=booking.name,
         booking_label=booking_label,
         subject_summary=booking.subject_summary,
+        meeting_date=meeting_date,
+        meeting_time_label=meeting_time_label,
     )
 
 
@@ -92,11 +92,25 @@ def _render_html_shell(
     cta_label: str | None = None,
     cta_url: str | None = None,
     cta_hint: str | None = None,
+    info_box_lines: list[str] | None = None,
 ) -> str:
     body_html = ''.join(
         f'<p style="margin:0 0 16px;color:#cbd5e1;font-size:15px;line-height:1.75;">{escape(line)}</p>'
         for line in body_lines
     )
+
+    info_box_html = ''
+    if info_box_lines:
+        info_box_html = (
+            '<div style="margin:0 0 22px;padding:18px 18px 16px;border-radius:20px;'
+            'background:linear-gradient(135deg,rgba(8,47,73,0.92) 0%,rgba(15,23,42,0.92) 100%);'
+            'border:1px solid rgba(103,232,249,0.18);box-shadow:inset 0 1px 0 rgba(255,255,255,0.04);">'
+            + ''.join(
+                f'<p style="margin:0 0 10px;color:#e0f2fe;font-size:14px;line-height:1.7;font-weight:600;">{escape(line)}</p>'
+                for line in info_box_lines
+            )
+            + '</div>'
+        )
 
     cta_html = ''
     if cta_label and cta_url:
@@ -131,6 +145,7 @@ def _render_html_shell(
             <tr>
               <td style="padding:24px 28px 10px;background:linear-gradient(180deg,rgba(15,23,42,0.98) 0%,rgba(8,47,73,0.96) 100%);">
                 <p style="margin:0 0 18px;color:#e2e8f0;font-size:16px;line-height:1.8;">{escape(intro)}</p>
+                {info_box_html}
                 {body_html}
                 {cta_html}
                 {hint_html}
@@ -185,43 +200,85 @@ def build_confirmation_request_email(*, booking: BookingRequest, confirmation_ur
 
 def build_booking_approved_email(*, booking: BookingRequest, client_setup_url: str | None) -> EmailContent:
     context = build_booking_context(booking)
-    subject = 'Solicitação aprovada | WV Tech Solutions'
+    subject = 'Reunião confirmada | WV Tech Solutions'
     intro = (
         f'Olá, {context.recipient_name}. Sua solicitação foi validada e a reunião está confirmada.'
     )
+    info_box_lines = []
+    if context.meeting_date:
+        info_box_lines.append(f'Data da reunião: {context.meeting_date}')
+    if context.meeting_time_label:
+        info_box_lines.append(f'Horário: {context.meeting_time_label} (horário de Brasília)')
+
     body_lines = [
-        f'Reunião confirmada para: {context.booking_label}',
-        'Você receberá a confirmação complementar via WhatsApp com os próximos passos do atendimento.',
+        'O link da reunião segue abaixo. Mesmo sem conta Google, você poderá entrar como visitante e será admitido na sala.',
+        'Recomendamos acessar o link alguns minutos antes do horário agendado.',
+        'Caso tente entrar com muita antecedência, talvez seja necessário aguardar o início da reunião ou a liberação pelo organizador.',
+        'Você também receberá os próximos passos pelos canais de contato já informados.',
     ]
-    if booking.meet_url:
-        body_lines.append(f'Link do Google Meet: {booking.meet_url}')
     if client_setup_url:
         body_lines.append(
             'Sua área do cliente já está disponível para ativação. Nela ficarão armazenadas as reuniões e as respectivas transcrições durante a vigência do projeto.'
         )
     html = _render_html_shell(
-        title='Solicitação aprovada',
+        title='Reunião confirmada',
         eyebrow='WV Tech Solutions',
         intro=intro,
         body_lines=body_lines,
-        cta_label='Ativar área do cliente' if client_setup_url else None,
-        cta_url=client_setup_url,
-        cta_hint='Guarde este link para acessar seu ambiente de acompanhamento do projeto.' if client_setup_url else None,
+        cta_label='Entrar na reunião' if booking.meet_url else ('Ativar área do cliente' if client_setup_url else None),
+        cta_url=booking.meet_url or client_setup_url,
+        cta_hint='Guarde esta mensagem. O mesmo link também ficará disponível na sua área do cliente.' if booking.meet_url else ('Guarde este link para acessar seu ambiente de acompanhamento do projeto.' if client_setup_url else None),
+        info_box_lines=info_box_lines or None,
     )
     text_parts = [
         f'Olá, {context.recipient_name}.',
         '',
         'Sua solicitação foi validada e a reunião está confirmada.',
-        f'Reunião confirmada para: {context.booking_label}',
     ]
+    if context.meeting_date:
+        text_parts.append(f'Data da reunião: {context.meeting_date}')
+    if context.meeting_time_label:
+        text_parts.append(f'Horário: {context.meeting_time_label} (horário de Brasília)')
     if booking.meet_url:
-        text_parts.append(f'Link do Google Meet: {booking.meet_url}')
-    text_parts.append('Você receberá a confirmação complementar via WhatsApp com os próximos passos do atendimento.')
+        text_parts.append(f'Link da reunião: {booking.meet_url}')
+        text_parts.append('Mesmo sem conta Google, você poderá entrar como visitante e aguardar admissão na sala.')
+    text_parts.extend([
+        'Recomendamos acessar o link alguns minutos antes do horário agendado.',
+        'Caso tente entrar com muita antecedência, talvez seja necessário aguardar o início da reunião ou a liberação pelo organizador.',
+        'Você também receberá os próximos passos pelos canais de contato já informados.',
+    ])
     if client_setup_url:
-        text_parts.extend([
-            '',
-            f'Ative sua área do cliente: {client_setup_url}',
-        ])
+        text_parts.extend(['', f'Área do cliente: {client_setup_url}'])
+    return EmailContent(subject=subject, html=html, text='\n'.join(text_parts))
+
+
+def build_booking_cancelled_email(*, booking: BookingRequest, cancellation_reason: str | None = None) -> EmailContent:
+    context = build_booking_context(booking)
+    subject = 'Reunião cancelada | WV Tech Solutions'
+    intro = (
+        f'Olá, {context.recipient_name}. Precisamos informar que a reunião vinculada à sua solicitação foi cancelada pela nossa equipe.'
+    )
+    body_lines = [
+        f'Reunião cancelada: {context.booking_label}',
+        'Se precisarmos reagendar, faremos um novo contato pelos canais já cadastrados.',
+    ]
+    if cancellation_reason:
+        body_lines.insert(1, f'Motivo informado: {cancellation_reason}')
+    html = _render_html_shell(
+        title='Reunião cancelada',
+        eyebrow='WV Tech Solutions',
+        intro=intro,
+        body_lines=body_lines,
+    )
+    text_parts = [
+        f'Olá, {context.recipient_name}.',
+        '',
+        'Precisamos informar que a reunião vinculada à sua solicitação foi cancelada pela nossa equipe.',
+        f'Reunião cancelada: {context.booking_label}',
+    ]
+    if cancellation_reason:
+        text_parts.append(f'Motivo informado: {cancellation_reason}')
+    text_parts.extend(['', 'Se precisarmos reagendar, faremos um novo contato pelos canais já cadastrados.'])
     return EmailContent(subject=subject, html=html, text='\n'.join(text_parts))
 
 

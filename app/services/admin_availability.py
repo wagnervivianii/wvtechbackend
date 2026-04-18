@@ -166,10 +166,14 @@ def _serialize_history_item(
         phone=booking.phone,
         subject_summary=booking.subject_summary,
         meet_url=booking.meet_url,
+        meet_event_id=booking.meet_event_id,
         meeting_notes=booking.meeting_notes,
         transcript_summary=booking.transcript_summary,
         has_transcript=bool(booking.transcript_text or booking.transcript_summary),
         created_at=booking.created_at.isoformat(),
+        contact_confirmed_at=booking.contact_confirmed_at.isoformat() if booking.contact_confirmed_at else None,
+        admin_reviewed_at=booking.admin_reviewed_at.isoformat() if booking.admin_reviewed_at else None,
+        rejection_reason=booking.rejection_reason,
         can_schedule_again=booking.can_schedule_again,
         has_client_workspace=workspace is not None,
         client_workspace_status=workspace.workspace_status if workspace else None,
@@ -284,7 +288,7 @@ def _load_booking_history(db: Session) -> list[AdminBookingHistoryItem]:
 
     history_items: list[AdminBookingHistoryItem] = []
     for booking in bookings:
-        if _booking_belongs_to_history(booking, now_local):
+        if booking.status == 'approved' or _booking_belongs_to_history(booking, now_local):
             history_items.append(
                 _serialize_history_item(
                     booking,

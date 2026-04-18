@@ -41,6 +41,7 @@ class AdminBookingHistoryItem(BaseModel):
     phone: str = Field(..., description="Telefone do contato")
     subject_summary: str = Field(..., description="Resumo do assunto")
     meet_url: str | None = Field(None, description="Link do Google Meet, quando existir")
+    meet_event_id: str | None = Field(None, description="ID do evento no Google Calendar")
     meeting_notes: str | None = Field(None, description="Observações internas da reunião")
     transcript_summary: str | None = Field(None, description="Resumo da transcrição")
     has_transcript: bool = Field(..., description="Indica se já existe transcrição vinculada")

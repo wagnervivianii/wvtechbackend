@@ -70,6 +70,23 @@ class Settings:
         '/cliente/ativacao',
     ).strip() or '/cliente/ativacao'
 
+
+    google_oauth_client_id: str = os.getenv('GOOGLE_OAUTH_CLIENT_ID', '').strip()
+    google_oauth_client_secret: str = os.getenv('GOOGLE_OAUTH_CLIENT_SECRET', '')
+    google_oauth_refresh_token: str = os.getenv('GOOGLE_OAUTH_REFRESH_TOKEN', '').strip()
+    google_oauth_token_url: str = os.getenv(
+        'GOOGLE_OAUTH_TOKEN_URL',
+        'https://oauth2.googleapis.com/token',
+    ).strip() or 'https://oauth2.googleapis.com/token'
+    google_calendar_id: str = os.getenv('GOOGLE_CALENDAR_ID', 'primary').strip() or 'primary'
+    google_calendar_send_updates: str = os.getenv('GOOGLE_CALENDAR_SEND_UPDATES', 'none').strip() or 'none'
+    google_calendar_event_summary_prefix: str = os.getenv(
+        'GOOGLE_CALENDAR_EVENT_SUMMARY_PREFIX',
+        'WV Tech Solutions | Reunião',
+    ).strip() or 'WV Tech Solutions | Reunião'
+    google_meet_retry_attempts: int = int(os.getenv('GOOGLE_MEET_RETRY_ATTEMPTS', '6'))
+    google_meet_retry_delay_seconds: float = float(os.getenv('GOOGLE_MEET_RETRY_DELAY_SECONDS', '1.0'))
+
     email_logo_path: str = os.getenv('EMAIL_LOGO_PATH', '/imagens/logo.png').strip() or '/imagens/logo.png'
     email_signature_image_path: str = os.getenv(
         'EMAIL_SIGNATURE_IMAGE_PATH',

@@ -11,6 +11,7 @@ from app.models.booking_request import BookingRequest
 from app.models.client_workspace_invite import ClientWorkspaceInvite
 from app.schemas.admin_bookings import (
     AdminBookingApprovalRequest,
+    AdminBookingCancellationRequest,
     AdminBookingDecisionResponse,
     AdminBookingPendingReviewItem,
     AdminBookingPendingReviewListResponse,
@@ -27,8 +28,14 @@ from app.services.booking_request_status import REOPENED_BOOKING_REQUEST_STATUSE
 from app.services.email_notifications import send_email
 from app.services.email_templates import (
     build_booking_approved_email,
+    build_booking_cancelled_email,
     build_booking_rejected_email,
     build_client_setup_url,
+)
+from app.services.google_calendar import (
+    GoogleCalendarIntegrationError,
+    create_google_meet_event_for_booking,
+    cancel_google_event_for_booking,
 )
 
 
@@ -206,6 +213,17 @@ def _send_booking_rejected_email_best_effort(*, booking: BookingRequest) -> None
         )
 
 
+def _send_booking_cancelled_email_best_effort(*, booking: BookingRequest, cancellation_reason: str | None) -> None:
+    try:
+        email_content = build_booking_cancelled_email(booking=booking, cancellation_reason=cancellation_reason)
+        send_email(to_email=booking.email, content=email_content)
+    except Exception:
+        logger.exception(
+            'Falha ao enviar email de cancelamento para booking_id=%s',
+            booking.id,
+        )
+
+
 def list_pending_admin_review(db: Session) -> AdminBookingPendingReviewListResponse:
     bookings = db.scalars(
         select(BookingRequest)
@@ -231,17 +249,25 @@ def approve_booking_request(
     booking = _get_booking_or_404(db, booking_id)
     _ensure_booking_waiting_admin_review(booking)
 
+    try:
+        meeting = create_google_meet_event_for_booking(
+            booking=booking,
+            meeting_notes=payload.meeting_notes,
+        )
+    except GoogleCalendarIntegrationError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f'Não foi possível criar automaticamente a reunião no Google Meet. {exc}',
+        ) from exc
+
     now_local = _now_local()
     booking.status = 'approved'
+    booking.meeting_status = 'scheduled'
     booking.admin_reviewed_at = now_local
     booking.rejection_reason = None
-
-    if payload.meet_url is not None:
-        booking.meet_url = payload.meet_url
-    if payload.meet_event_id is not None:
-        booking.meet_event_id = payload.meet_event_id
-    if payload.meeting_notes is not None:
-        booking.meeting_notes = payload.meeting_notes
+    booking.meet_url = meeting.meet_url
+    booking.meet_event_id = meeting.event_id
+    booking.meeting_notes = payload.meeting_notes.strip() if payload.meeting_notes else None
 
     db.add(booking)
     db.commit()
@@ -298,6 +324,61 @@ def reject_booking_request(
     db.refresh(booking)
 
     _send_booking_rejected_email_best_effort(booking=booking)
+
+    return _serialize_decision_response(db, booking)
+
+
+def cancel_booking_request(
+    db: Session,
+    *,
+    booking_id: int,
+    payload: AdminBookingCancellationRequest,
+) -> AdminBookingDecisionResponse:
+    booking = _get_booking_or_404(db, booking_id)
+
+    if booking.meeting_status in TERMINAL_MEETING_STATUSES:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail='Esta reunião já foi encerrada e não pode mais ser cancelada por este fluxo.',
+        )
+
+    if booking.status != 'approved':
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail='Somente reuniões aprovadas podem ser canceladas por esta ação.',
+        )
+
+    if booking.meet_event_id:
+        try:
+            cancel_google_event_for_booking(event_id=booking.meet_event_id)
+        except GoogleCalendarIntegrationError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail=f'Não foi possível cancelar a reunião no Google Calendar. {exc}',
+            ) from exc
+
+    notes = []
+    if booking.meeting_notes:
+        notes.append(booking.meeting_notes.strip())
+    if payload.meeting_notes:
+        notes.append(f'[Cancelamento] {payload.meeting_notes.strip()}')
+    if payload.cancellation_reason:
+        notes.append(f'[Motivo enviado ao cliente] {payload.cancellation_reason.strip()}')
+
+    booking.status = 'cancelled_by_admin'
+    booking.meeting_status = 'cancelled'
+    booking.admin_reviewed_at = _now_local()
+    booking.meeting_notes = '\n\n'.join(part for part in notes if part) or None
+    booking.meet_url = None
+
+    db.add(booking)
+    db.commit()
+    db.refresh(booking)
+
+    _send_booking_cancelled_email_best_effort(
+        booking=booking,
+        cancellation_reason=payload.cancellation_reason.strip() if payload.cancellation_reason else None,
+    )
 
     return _serialize_decision_response(db, booking)
 

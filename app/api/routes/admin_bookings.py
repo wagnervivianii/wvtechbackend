@@ -5,6 +5,7 @@ from app.core.security import require_admin_auth
 from app.db.session import get_db
 from app.schemas.admin_bookings import (
     AdminBookingApprovalRequest,
+    AdminBookingCancellationRequest,
     AdminBookingDecisionResponse,
     AdminBookingPendingReviewListResponse,
     AdminBookingRebookingPermissionRequest,
@@ -13,6 +14,7 @@ from app.schemas.admin_bookings import (
 )
 from app.services.admin_bookings import (
     approve_booking_request,
+    cancel_booking_request,
     list_pending_admin_review,
     reject_booking_request,
     update_rebooking_permission,
@@ -52,6 +54,19 @@ def post_booking_rejection(
     db: Session = Depends(get_db),
 ) -> AdminBookingDecisionResponse:
     return reject_booking_request(
+        db=db,
+        booking_id=booking_id,
+        payload=payload,
+    )
+
+
+@router.post("/{booking_id}/cancel", response_model=AdminBookingDecisionResponse)
+def post_booking_cancellation(
+    booking_id: int,
+    payload: AdminBookingCancellationRequest,
+    db: Session = Depends(get_db),
+) -> AdminBookingDecisionResponse:
+    return cancel_booking_request(
         db=db,
         booking_id=booking_id,
         payload=payload,
