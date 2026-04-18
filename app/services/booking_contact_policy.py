@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
 from app.models.booking_request import BookingRequest
@@ -22,8 +22,12 @@ def find_latest_contact_lock(
 ) -> BookingRequest | None:
     bookings = db.scalars(
         select(BookingRequest)
-        .where(BookingRequest.email == email)
-        .where(BookingRequest.phone == phone)
+        .where(
+            or_(
+                BookingRequest.email == email,
+                BookingRequest.phone == phone,
+            )
+        )
         .order_by(BookingRequest.created_at.desc(), BookingRequest.id.desc())
     ).all()
 

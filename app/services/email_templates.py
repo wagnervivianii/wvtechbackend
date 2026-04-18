@@ -83,65 +83,66 @@ def build_booking_context(booking: BookingRequest) -> BookingEmailContext:
     )
 
 
-def _render_html_shell(*, title: str, eyebrow: str, intro: str, body_lines: list[str], cta_label: str | None = None, cta_url: str | None = None, cta_hint: str | None = None) -> str:
-    logo_url = build_public_asset_url(settings.email_logo_path)
-    signature_url = build_public_asset_url(settings.email_signature_image_path)
-
+def _render_html_shell(
+    *,
+    title: str,
+    eyebrow: str,
+    intro: str,
+    body_lines: list[str],
+    cta_label: str | None = None,
+    cta_url: str | None = None,
+    cta_hint: str | None = None,
+) -> str:
     body_html = ''.join(
-        f'<p style="margin:0 0 16px;color:#cbd5e1;font-size:15px;line-height:1.7;">{escape(line)}</p>'
+        f'<p style="margin:0 0 16px;color:#cbd5e1;font-size:15px;line-height:1.75;">{escape(line)}</p>'
         for line in body_lines
     )
 
     cta_html = ''
     if cta_label and cta_url:
         cta_html = f'''
-          <div style="margin:30px 0 22px;">
-            <a href="{escape(cta_url)}" style="display:inline-block;border-radius:999px;background:#22d3ee;padding:14px 22px;color:#020617;font-size:14px;font-weight:700;text-decoration:none;">{escape(cta_label)}</a>
+          <div style="margin:28px 0 18px;">
+            <a href="{escape(cta_url)}" style="display:inline-block;border-radius:999px;background:linear-gradient(135deg,#22d3ee 0%,#38bdf8 100%);padding:14px 22px;color:#082f49;font-size:14px;font-weight:700;text-decoration:none;box-shadow:0 10px 28px rgba(34,211,238,0.35);">{escape(cta_label)}</a>
           </div>
         '''
 
     hint_html = ''
     if cta_hint:
         hint_html = (
-            f'<p style="margin:0 0 18px;color:#94a3b8;font-size:13px;line-height:1.6;">{escape(cta_hint)}</p>'
+            f'<p style="margin:0 0 18px;color:#94a3b8;font-size:13px;line-height:1.7;">{escape(cta_hint)}</p>'
         )
 
     return f'''<!doctype html>
 <html lang="pt-BR">
-  <body style="margin:0;padding:0;background:#020617;font-family:Inter,Arial,sans-serif;">
-    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#020617;padding:28px 12px;">
+  <body style="margin:0;padding:0;background:#0f172a;font-family:Arial,sans-serif;">
+    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:linear-gradient(180deg,#0f172a 0%,#082f49 100%);padding:28px 12px;">
       <tr>
         <td align="center">
-          <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:680px;border:1px solid rgba(255,255,255,0.08);border-radius:28px;overflow:hidden;background:linear-gradient(180deg,#0f172a 0%,#020617 100%);box-shadow:0 24px 80px rgba(2,6,23,0.42);">
+          <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:680px;border:1px solid rgba(103,232,249,0.18);border-radius:28px;overflow:hidden;background:#0f172a;box-shadow:0 24px 60px rgba(2,6,23,0.45);">
             <tr>
-              <td style="padding:30px 28px 12px;">
-                <table role="presentation" cellspacing="0" cellpadding="0">
-                  <tr>
-                    <td style="vertical-align:middle;padding-right:14px;">
-                      <img src="{escape(logo_url)}" alt="WV Tech Solutions" width="56" height="56" style="display:block;border-radius:999px;object-fit:cover;" />
-                    </td>
-                    <td style="vertical-align:middle;">
-                      <div style="color:#22d3ee;font-size:12px;font-weight:700;letter-spacing:0.38em;text-transform:uppercase;">{escape(eyebrow)}</div>
-                      <div style="margin-top:8px;color:#f8fafc;font-size:30px;font-weight:700;line-height:1.08;">{escape(title)}</div>
-                    </td>
-                  </tr>
-                </table>
+              <td style="padding:30px 28px 18px;background:linear-gradient(135deg,#0f172a 0%,#0c4a6e 52%,#1e3a8a 100%);border-bottom:1px solid rgba(148,163,184,0.16);">
+                <div style="display:inline-block;border-radius:999px;background:rgba(255,255,255,0.08);border:1px solid rgba(103,232,249,0.22);padding:8px 14px;color:#67e8f9;font-size:12px;font-weight:700;letter-spacing:0.24em;text-transform:uppercase;">
+                  {escape(eyebrow)}
+                </div>
+                <div style="margin-top:16px;color:#f8fafc;font-size:30px;font-weight:700;line-height:1.12;">{escape(title)}</div>
+                <div style="margin-top:10px;color:#bae6fd;font-size:14px;line-height:1.7;">Dados, automação e percepção de negócio</div>
               </td>
             </tr>
             <tr>
-              <td style="padding:6px 28px 0;">
-                <p style="margin:0 0 18px;color:#e2e8f0;font-size:16px;line-height:1.75;">{escape(intro)}</p>
+              <td style="padding:24px 28px 10px;background:linear-gradient(180deg,rgba(15,23,42,0.98) 0%,rgba(8,47,73,0.96) 100%);">
+                <p style="margin:0 0 18px;color:#e2e8f0;font-size:16px;line-height:1.8;">{escape(intro)}</p>
                 {body_html}
                 {cta_html}
                 {hint_html}
               </td>
             </tr>
             <tr>
-              <td style="padding:10px 28px 32px;">
-                <div style="margin-top:10px;padding-top:22px;border-top:1px solid rgba(255,255,255,0.08);">
-                  <img src="{escape(signature_url)}" alt="Assinatura WV Tech Solutions" style="display:block;max-width:220px;width:100%;height:auto;" />
-                  <p style="margin:14px 0 4px;color:#f8fafc;font-size:15px;font-weight:700;">{escape(settings.email_signature_name)}</p>
-                  <p style="margin:0;color:#94a3b8;font-size:13px;line-height:1.6;">{escape(settings.email_signature_phone)}</p>
+              <td style="padding:10px 28px 28px;background:#0f172a;">
+                <div style="margin-top:10px;padding-top:20px;border-top:1px solid rgba(148,163,184,0.16);">
+                  <p style="margin:0 0 6px;color:#f8fafc;font-size:15px;font-weight:700;">WV Tech Solutions</p>
+                  <p style="margin:0 0 4px;color:#e2e8f0;font-size:14px;font-weight:700;">{escape(settings.email_signature_name)}</p>
+                  <p style="margin:0 0 8px;color:#94a3b8;font-size:13px;line-height:1.7;">{escape(settings.email_signature_phone)}</p>
+                  <p style="margin:0;color:#67e8f9;font-size:12px;line-height:1.7;">Comunicação oficial da WV Tech Solutions</p>
                 </div>
               </td>
             </tr>

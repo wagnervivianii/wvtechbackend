@@ -121,9 +121,9 @@ def create_booking_request(
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=(
-                'Já existe uma solicitação ou reunião em andamento para este e-mail e telefone. '
-                'Depois que a reunião anterior acontecer, o administrador precisará liberar '
-                'um novo agendamento para você.'
+                'Já existe uma solicitação ou reunião em andamento vinculada a este '
+                'e-mail ou telefone. Após a realização da reunião atual, o administrador '
+                'precisará liberar um novo agendamento para você.'
             ),
         )
 

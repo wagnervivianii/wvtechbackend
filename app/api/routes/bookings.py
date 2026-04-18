@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException, Response
 from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session
 
@@ -10,6 +10,7 @@ from app.schemas.bookings import (
     BookingSlotListResponse,
 )
 from app.services.booking_confirmations import (
+    CONSUMED_CONFIRMATION_DETAIL,
     build_confirmation_result_url,
     confirm_booking_request_email,
 )
@@ -54,27 +55,29 @@ def confirm_booking_request_status_route(
 def confirm_booking_request_route(
     token: str,
     db: Session = Depends(get_db),
-) -> RedirectResponse:
+) -> Response:
     try:
         result = confirm_booking_request_email(db=db, raw_token=token)
         redirect_url = build_confirmation_result_url(
-            result_status='success',
+            result_status=result.result_status,
             booking_id=result.booking_id,
         )
-    except Exception as exc:
-        if hasattr(exc, 'status_code'):
-            status_code = getattr(exc, 'status_code')
-            if status_code == 404:
-                result_status = 'invalid'
-            elif status_code == 410:
-                result_status = 'expired'
-            elif status_code == 409:
-                result_status = 'already-confirmed'
-            else:
-                result_status = 'error'
+        return RedirectResponse(url=redirect_url, status_code=303)
+    except HTTPException as exc:
+        if exc.status_code == 410 and exc.detail == CONSUMED_CONFIRMATION_DETAIL:
+            return Response(status_code=204)
+
+        if exc.status_code == 404:
+            result_status = 'invalid'
+        elif exc.status_code == 410:
+            result_status = 'expired'
+        elif exc.status_code == 409:
+            result_status = 'already-confirmed'
         else:
             result_status = 'error'
 
         redirect_url = build_confirmation_result_url(result_status=result_status)
-
-    return RedirectResponse(url=redirect_url, status_code=303)
+        return RedirectResponse(url=redirect_url, status_code=303)
+    except Exception:
+        redirect_url = build_confirmation_result_url(result_status='error')
+        return RedirectResponse(url=redirect_url, status_code=303)

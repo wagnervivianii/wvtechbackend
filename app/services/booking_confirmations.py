@@ -17,6 +17,8 @@ from app.schemas.bookings import BookingEmailConfirmationResponse
 
 
 PENDING_CONFIRMATION_STATUSES = {'pending', 'replaced'}
+MAX_TRACKED_CONFIRMATION_ACCESSES = 2
+CONSUMED_CONFIRMATION_DETAIL = 'Link de confirmação já consumido.'
 
 
 def _now_local() -> datetime:
@@ -46,6 +48,19 @@ def build_confirmation_action_url(raw_token: str) -> str:
     return f'{base_url}/bookings/confirm/{raw_token}'
 
 
+def _increment_access_count(
+    db: Session,
+    *,
+    confirmation: BookingRequestConfirmation,
+) -> None:
+    current_count = confirmation.access_count or 0
+    if current_count >= MAX_TRACKED_CONFIRMATION_ACCESSES:
+        return
+
+    confirmation.access_count = current_count + 1
+    db.add(confirmation)
+
+
 def create_booking_confirmation(
     db: Session,
     *,
@@ -71,6 +86,7 @@ def create_booking_confirmation(
         booking_request_id=booking.id,
         confirmation_token_hash=token_hash,
         confirmation_status='pending',
+        access_count=0,
         expires_at=now_local + timedelta(hours=effective_ttl),
     )
     db.add(confirmation)
@@ -97,6 +113,15 @@ def confirm_booking_request_email(
             detail='Token de confirmação não encontrado.',
         )
 
+    if (
+        confirmation.confirmation_status == 'confirmed'
+        and (confirmation.access_count or 0) >= MAX_TRACKED_CONFIRMATION_ACCESSES
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_410_GONE,
+            detail=CONSUMED_CONFIRMATION_DETAIL,
+        )
+
     booking = db.get(BookingRequest, confirmation.booking_request_id)
     if booking is None:
         raise HTTPException(
@@ -107,9 +132,12 @@ def confirm_booking_request_email(
     now_local = _now_local()
 
     if confirmation.confirmation_status == 'confirmed' and booking.contact_confirmed_at is not None:
+        _increment_access_count(db, confirmation=confirmation)
+        db.commit()
         return BookingEmailConfirmationResponse(
             booking_id=booking.id,
             status=booking.status,
+            result_status='already-confirmed',
             message='Este email já foi confirmado anteriormente.',
             confirmed_at=booking.contact_confirmed_at.isoformat(),
         )
@@ -129,6 +157,7 @@ def confirm_booking_request_email(
             detail='Este token de confirmação não está mais ativo.',
         )
 
+    _increment_access_count(db, confirmation=confirmation)
     confirmation.confirmation_status = 'confirmed'
     confirmation.confirmed_at = now_local
 
@@ -143,6 +172,7 @@ def confirm_booking_request_email(
     return BookingEmailConfirmationResponse(
         booking_id=booking.id,
         status=booking.status,
+        result_status='success',
         message=(
             'Email confirmado com sucesso. Sua solicitação agora aguarda análise administrativa.'
         ),

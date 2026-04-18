@@ -7,12 +7,12 @@ from app.db.base import Base
 
 
 class BookingRequestConfirmation(Base):
-    __tablename__ = "booking_request_confirmations"
+    __tablename__ = 'booking_request_confirmations'
 
     id: Mapped[int] = mapped_column(primary_key=True)
     booking_request_id: Mapped[int] = mapped_column(
         Integer,
-        ForeignKey("booking_requests.id", ondelete="CASCADE"),
+        ForeignKey('booking_requests.id', ondelete='CASCADE'),
         nullable=False,
         index=True,
     )
@@ -25,9 +25,15 @@ class BookingRequestConfirmation(Base):
     confirmation_status: Mapped[str] = mapped_column(
         String(40),
         nullable=False,
-        default="pending",
-        server_default="pending",
+        default='pending',
+        server_default='pending',
         index=True,
+    )
+    access_count: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+        default=0,
+        server_default='0',
     )
     expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     confirmed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
