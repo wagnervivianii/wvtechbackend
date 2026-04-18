@@ -15,11 +15,14 @@ from app.schemas.bookings import (
     BookingSlotSummary,
 )
 from app.services.booking_confirmations import (
+    build_confirmation_action_url,
     build_confirmation_preview_path,
     create_booking_confirmation,
 )
 from app.services.booking_contact_policy import find_latest_contact_lock
 from app.services.booking_request_status import BLOCKING_BOOKING_REQUEST_STATUSES
+from app.services.email_notifications import send_email
+from app.services.email_templates import build_confirmation_request_email
 
 
 def create_booking_request(
@@ -31,7 +34,7 @@ def create_booking_request(
     except ValueError as exc:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="Horário selecionado inválido",
+            detail='Horário selecionado inválido',
         ) from exc
 
     slot = db.scalar(
@@ -43,7 +46,7 @@ def create_booking_request(
     if slot is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Horário selecionado não encontrado",
+            detail='Horário selecionado não encontrado',
         )
 
     day = db.scalar(
@@ -55,7 +58,7 @@ def create_booking_request(
     if day is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Dia selecionado não está mais disponível",
+            detail='Dia selecionado não está mais disponível',
         )
 
     now = datetime.now(ZoneInfo(settings.app_timezone))
@@ -78,7 +81,7 @@ def create_booking_request(
     if not (first_day_of_current_month <= day.available_date < month_after_next):
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="Horário fora da janela atual de agendamento",
+            detail='Horário fora da janela atual de agendamento',
         )
 
     slot_starts_at = datetime.combine(
@@ -89,7 +92,7 @@ def create_booking_request(
     if slot_starts_at <= now:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="Horário selecionado já expirou",
+            detail='Horário selecionado já expirou',
         )
 
     existing_blocking_request = db.scalar(
@@ -103,8 +106,8 @@ def create_booking_request(
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=(
-                "Este horário acabou de ser reservado e não está mais disponível. "
-                "Escolha outro horário para continuar."
+                'Este horário acabou de ser reservado e não está mais disponível. '
+                'Escolha outro horário para continuar.'
             ),
         )
 
@@ -118,9 +121,9 @@ def create_booking_request(
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=(
-                "Já existe uma solicitação ou reunião em andamento para este e-mail e telefone. "
-                "Depois que a reunião anterior acontecer, o administrador precisará liberar "
-                "um novo agendamento para você."
+                'Já existe uma solicitação ou reunião em andamento para este e-mail e telefone. '
+                'Depois que a reunião anterior acontecer, o administrador precisará liberar '
+                'um novo agendamento para você.'
             ),
         )
 
@@ -134,8 +137,8 @@ def create_booking_request(
         email=payload.email,
         phone=payload.phone,
         subject_summary=payload.subject_summary,
-        status="pending_contact_confirmation",
-        meeting_status="scheduled",
+        status='pending_contact_confirmation',
+        meeting_status='scheduled',
         can_schedule_again=False,
     )
 
@@ -147,18 +150,38 @@ def create_booking_request(
         booking=booking_request,
     )
 
+    try:
+        confirmation_url = build_confirmation_action_url(confirmation_preview_token)
+        email_content = build_confirmation_request_email(
+            booking=booking_request,
+            confirmation_url=confirmation_url,
+        )
+        send_email(
+            to_email=booking_request.email,
+            content=email_content,
+        )
+    except Exception as exc:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=(
+                'Não foi possível enviar o email de confirmação neste momento. '
+                'Tente novamente em instantes.'
+            ),
+        ) from exc
+
     db.commit()
     db.refresh(booking_request)
 
-    start_text = slot.start_time.strftime("%H:%M")
-    end_text = slot.end_time.strftime("%H:%M")
-    expose_preview = settings.app_env.lower() != "production"
+    start_text = slot.start_time.strftime('%H:%M')
+    end_text = slot.end_time.strftime('%H:%M')
+    expose_preview = settings.app_env.lower() != 'production'
 
     return BookingRequestCreated(
         status=booking_request.status,
         message=(
-            "Solicitação recebida com sucesso. "
-            "O horário foi reservado e aguarda a confirmação do pedido."
+            'Solicitação recebida com sucesso. '
+            'Enviamos um email de confirmação para validar o seu pedido.'
         ),
         slot_id=booking_request.slot_id,
         booking_date=day.available_date,

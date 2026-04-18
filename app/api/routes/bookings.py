@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends
+from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
@@ -8,29 +9,32 @@ from app.schemas.bookings import (
     BookingRequestCreated,
     BookingSlotListResponse,
 )
-from app.services.booking_confirmations import confirm_booking_request_email
+from app.services.booking_confirmations import (
+    build_confirmation_result_url,
+    confirm_booking_request_email,
+)
 from app.services.booking_requests import create_booking_request
 from app.services.booking_slots import list_dynamic_booking_slots
 
-router = APIRouter(prefix="/bookings", tags=["bookings"])
+router = APIRouter(prefix='/bookings', tags=['bookings'])
 
 
-@router.get("/health")
+@router.get('/health')
 def bookings_healthcheck() -> dict[str, str]:
     return {
-        "status": "ok",
-        "module": "bookings",
+        'status': 'ok',
+        'module': 'bookings',
     }
 
 
-@router.get("/slots", response_model=BookingSlotListResponse)
+@router.get('/slots', response_model=BookingSlotListResponse)
 def list_booking_slots(
     db: Session = Depends(get_db),
 ) -> BookingSlotListResponse:
     return BookingSlotListResponse(slots=list_dynamic_booking_slots(db=db))
 
 
-@router.post("/requests", response_model=BookingRequestCreated)
+@router.post('/requests', response_model=BookingRequestCreated)
 def create_booking_request_route(
     payload: BookingRequestCreate,
     db: Session = Depends(get_db),
@@ -38,9 +42,39 @@ def create_booking_request_route(
     return create_booking_request(db=db, payload=payload)
 
 
-@router.get("/confirm/{token}", response_model=BookingEmailConfirmationResponse)
-def confirm_booking_request_route(
+@router.get('/confirm/{token}/status', response_model=BookingEmailConfirmationResponse)
+def confirm_booking_request_status_route(
     token: str,
     db: Session = Depends(get_db),
 ) -> BookingEmailConfirmationResponse:
     return confirm_booking_request_email(db=db, raw_token=token)
+
+
+@router.get('/confirm/{token}', include_in_schema=False)
+def confirm_booking_request_route(
+    token: str,
+    db: Session = Depends(get_db),
+) -> RedirectResponse:
+    try:
+        result = confirm_booking_request_email(db=db, raw_token=token)
+        redirect_url = build_confirmation_result_url(
+            result_status='success',
+            booking_id=result.booking_id,
+        )
+    except Exception as exc:
+        if hasattr(exc, 'status_code'):
+            status_code = getattr(exc, 'status_code')
+            if status_code == 404:
+                result_status = 'invalid'
+            elif status_code == 410:
+                result_status = 'expired'
+            elif status_code == 409:
+                result_status = 'already-confirmed'
+            else:
+                result_status = 'error'
+        else:
+            result_status = 'error'
+
+        redirect_url = build_confirmation_result_url(result_status=result_status)
+
+    return RedirectResponse(url=redirect_url, status_code=303)

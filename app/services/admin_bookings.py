@@ -1,4 +1,5 @@
 from datetime import datetime
+import logging
 from zoneinfo import ZoneInfo
 
 from fastapi import HTTPException, status
@@ -7,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.models.booking_request import BookingRequest
+from app.models.client_workspace_invite import ClientWorkspaceInvite
 from app.schemas.admin_bookings import (
     AdminBookingApprovalRequest,
     AdminBookingDecisionResponse,
@@ -22,9 +24,18 @@ from app.services.admin_client_workspaces import (
     provision_client_workspace_for_booking,
 )
 from app.services.booking_request_status import REOPENED_BOOKING_REQUEST_STATUSES
+from app.services.email_notifications import send_email
+from app.services.email_templates import (
+    build_booking_approved_email,
+    build_booking_rejected_email,
+    build_client_setup_url,
+)
 
-TERMINAL_MEETING_STATUSES = {"completed", "cancelled", "no_show"}
-PENDING_ADMIN_REVIEW_STATUS = "email_confirmed_pending_admin_review"
+
+logger = logging.getLogger(__name__)
+
+TERMINAL_MEETING_STATUSES = {'completed', 'cancelled', 'no_show'}
+PENDING_ADMIN_REVIEW_STATUS = 'email_confirmed_pending_admin_review'
 
 
 def _now_local() -> datetime:
@@ -67,7 +78,7 @@ def _get_booking_or_404(db: Session, booking_id: int) -> BookingRequest:
     if booking is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Solicitação de reunião não encontrada.",
+            detail='Solicitação de reunião não encontrada.',
         )
     return booking
 
@@ -76,27 +87,27 @@ def _ensure_booking_waiting_admin_review(booking: BookingRequest) -> None:
     if booking.status != PENDING_ADMIN_REVIEW_STATUS:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="Esta solicitação não está aguardando análise administrativa.",
+            detail='Esta solicitação não está aguardando análise administrativa.',
         )
 
 
 def _build_display_label(booking: BookingRequest) -> str:
-    start_text = booking.start_time.strftime("%H:%M") if booking.start_time else None
-    end_text = booking.end_time.strftime("%H:%M") if booking.end_time else None
+    start_text = booking.start_time.strftime('%H:%M') if booking.start_time else None
+    end_text = booking.end_time.strftime('%H:%M') if booking.end_time else None
 
     if booking.booking_date and start_text and end_text:
         return f"{booking.booking_date.strftime('%d/%m/%Y')} • {start_text} às {end_text}"
     if booking.booking_date:
-        return booking.booking_date.strftime("%d/%m/%Y")
-    return f"Solicitação #{booking.id}"
+        return booking.booking_date.strftime('%d/%m/%Y')
+    return f'Solicitação #{booking.id}'
 
 
 def _serialize_pending_review_item(booking: BookingRequest) -> AdminBookingPendingReviewItem:
     return AdminBookingPendingReviewItem(
         id=booking.id,
         booking_date=booking.booking_date.isoformat() if booking.booking_date else None,
-        start_time=booking.start_time.strftime("%H:%M") if booking.start_time else None,
-        end_time=booking.end_time.strftime("%H:%M") if booking.end_time else None,
+        start_time=booking.start_time.strftime('%H:%M') if booking.start_time else None,
+        end_time=booking.end_time.strftime('%H:%M') if booking.end_time else None,
         display_label=_build_display_label(booking),
         status=booking.status,
         meeting_status=booking.meeting_status,
@@ -133,8 +144,8 @@ def _serialize_decision_response(
         phone=booking.phone,
         subject_summary=booking.subject_summary,
         booking_date=booking.booking_date.isoformat() if booking.booking_date else None,
-        start_time=booking.start_time.strftime("%H:%M") if booking.start_time else None,
-        end_time=booking.end_time.strftime("%H:%M") if booking.end_time else None,
+        start_time=booking.start_time.strftime('%H:%M') if booking.start_time else None,
+        end_time=booking.end_time.strftime('%H:%M') if booking.end_time else None,
         meet_url=booking.meet_url,
         meet_event_id=booking.meet_event_id,
         meeting_notes=booking.meeting_notes,
@@ -148,6 +159,51 @@ def _serialize_decision_response(
         can_schedule_again=booking.can_schedule_again,
         client_workspace=_load_workspace_detail_or_none(db, booking.id),
     )
+
+
+def _mark_initial_invite_as_sent(db: Session, invite_id: int | None) -> None:
+    if invite_id is None:
+        return
+
+    invite = db.get(ClientWorkspaceInvite, invite_id)
+    if invite is None:
+        return
+
+    invite.sent_at = _now_local()
+    db.add(invite)
+    db.commit()
+
+
+def _send_booking_approved_email_best_effort(
+    db: Session,
+    *,
+    booking: BookingRequest,
+    client_setup_url: str | None,
+    invite_id_to_mark: int | None,
+) -> None:
+    try:
+        email_content = build_booking_approved_email(
+            booking=booking,
+            client_setup_url=client_setup_url,
+        )
+        send_email(to_email=booking.email, content=email_content)
+        _mark_initial_invite_as_sent(db, invite_id_to_mark)
+    except Exception:
+        logger.exception(
+            'Falha ao enviar email de aprovação para booking_id=%s',
+            booking.id,
+        )
+
+
+def _send_booking_rejected_email_best_effort(*, booking: BookingRequest) -> None:
+    try:
+        email_content = build_booking_rejected_email(booking=booking)
+        send_email(to_email=booking.email, content=email_content)
+    except Exception:
+        logger.exception(
+            'Falha ao enviar email de rejeição para booking_id=%s',
+            booking.id,
+        )
 
 
 def list_pending_admin_review(db: Session) -> AdminBookingPendingReviewListResponse:
@@ -176,7 +232,7 @@ def approve_booking_request(
     _ensure_booking_waiting_admin_review(booking)
 
     now_local = _now_local()
-    booking.status = "approved"
+    booking.status = 'approved'
     booking.admin_reviewed_at = now_local
     booking.rejection_reason = None
 
@@ -191,8 +247,12 @@ def approve_booking_request(
     db.commit()
     db.refresh(booking)
 
+    workspace_detail = None
+    invite_id_to_mark: int | None = None
+    client_setup_url: str | None = None
+
     if payload.create_client_workspace:
-        provision_client_workspace_for_booking(
+        workspace_detail = provision_client_workspace_for_booking(
             db=db,
             booking_id=booking.id,
             payload=AdminClientWorkspaceProvisionRequest(
@@ -202,6 +262,16 @@ def approve_booking_request(
             ),
         )
         booking = _get_booking_or_404(db, booking_id)
+        client_setup_url = build_client_setup_url(workspace_detail.setup_path)
+        if workspace_detail.invites and workspace_detail.setup_token:
+            invite_id_to_mark = workspace_detail.invites[0].id
+
+    _send_booking_approved_email_best_effort(
+        db,
+        booking=booking,
+        client_setup_url=client_setup_url,
+        invite_id_to_mark=invite_id_to_mark,
+    )
 
     return _serialize_decision_response(db, booking)
 
@@ -215,8 +285,8 @@ def reject_booking_request(
     booking = _get_booking_or_404(db, booking_id)
     _ensure_booking_waiting_admin_review(booking)
 
-    booking.status = "rejected"
-    booking.meeting_status = "cancelled"
+    booking.status = 'rejected'
+    booking.meeting_status = 'cancelled'
     booking.admin_reviewed_at = _now_local()
     booking.rejection_reason = payload.rejection_reason
 
@@ -226,6 +296,8 @@ def reject_booking_request(
     db.add(booking)
     db.commit()
     db.refresh(booking)
+
+    _send_booking_rejected_email_best_effort(booking=booking)
 
     return _serialize_decision_response(db, booking)
 
@@ -240,15 +312,15 @@ def update_rebooking_permission(
     if booking is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Solicitação de reunião não encontrada.",
+            detail='Solicitação de reunião não encontrada.',
         )
 
     if payload.can_schedule_again and not _booking_has_already_happened(booking):
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=(
-                "A liberação de novo agendamento só pode acontecer depois que a reunião "
-                "anterior já tiver ocorrido ou sido encerrada manualmente."
+                'A liberação de novo agendamento só pode acontecer depois que a reunião '
+                'anterior já tiver ocorrido ou sido encerrada manualmente.'
             ),
         )
 

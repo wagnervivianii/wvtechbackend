@@ -6,37 +6,77 @@ from dotenv import load_dotenv
 
 
 BASE_DIR = Path(__file__).resolve().parents[2]
-ENV_FILE = BASE_DIR / ".env"
+ENV_FILE = BASE_DIR / '.env'
 
 load_dotenv(ENV_FILE)
 
 
+def _get_bool(name: str, default: bool) -> bool:
+    value = os.getenv(name)
+    if value is None:
+        return default
+    return value.strip().lower() in {'1', 'true', 'yes', 'on'}
+
+
 @dataclass(frozen=True, slots=True)
 class Settings:
-    app_name: str = os.getenv("APP_NAME", "WV Tech Solutions API")
-    app_env: str = os.getenv("APP_ENV", "development")
-    app_host: str = os.getenv("APP_HOST", "127.0.0.1")
-    app_port: int = int(os.getenv("APP_PORT", "8000"))
-    app_timezone: str = os.getenv("APP_TIMEZONE", "America/Sao_Paulo")
+    app_name: str = os.getenv('APP_NAME', 'WV Tech Solutions API')
+    app_env: str = os.getenv('APP_ENV', 'development')
+    app_host: str = os.getenv('APP_HOST', '127.0.0.1')
+    app_port: int = int(os.getenv('APP_PORT', '8000'))
+    app_timezone: str = os.getenv('APP_TIMEZONE', 'America/Sao_Paulo')
     database_url: str = os.getenv(
-        "DATABASE_URL",
-        "postgresql+psycopg://postgres:postgres@localhost:5432/wvtechsolutions",
+        'DATABASE_URL',
+        'postgresql+psycopg://postgres:postgres@localhost:5432/wvtechsolutions',
     )
-    admin_username: str = os.getenv("ADMIN_USERNAME", "").strip()
-    admin_password: str = os.getenv("ADMIN_PASSWORD", "")
-    admin_token_secret: str = os.getenv("ADMIN_TOKEN_SECRET", "").strip()
-    admin_token_ttl_minutes: int = int(os.getenv("ADMIN_TOKEN_TTL_MINUTES", "480"))
-    admin_token_issuer: str = os.getenv(
-        "ADMIN_TOKEN_ISSUER",
-        "wvtechsolutions-admin",
-    )
+    admin_username: str = os.getenv('ADMIN_USERNAME', '').strip()
+    admin_password: str = os.getenv('ADMIN_PASSWORD', '')
+    admin_token_secret: str = os.getenv('ADMIN_TOKEN_SECRET', '').strip()
+    admin_token_ttl_minutes: int = int(os.getenv('ADMIN_TOKEN_TTL_MINUTES', '480'))
+    admin_token_issuer: str = os.getenv('ADMIN_TOKEN_ISSUER', 'wvtechsolutions-admin')
+
     booking_confirmation_ttl_hours: int = int(
-        os.getenv("BOOKING_CONFIRMATION_TTL_HOURS", "48")
+        os.getenv('BOOKING_CONFIRMATION_TTL_HOURS', '48')
     )
     booking_confirmation_path_prefix: str = os.getenv(
-        "BOOKING_CONFIRMATION_PATH_PREFIX",
-        "/agendar/confirmar",
-    ).strip() or "/agendar/confirmar"
+        'BOOKING_CONFIRMATION_PATH_PREFIX',
+        '/bookings/confirm',
+    ).strip() or '/bookings/confirm'
+    booking_confirmation_result_path_prefix: str = os.getenv(
+        'BOOKING_CONFIRMATION_RESULT_PATH_PREFIX',
+        '/agendar/confirmacao',
+    ).strip() or '/agendar/confirmacao'
+
+    email_delivery_mode: str = os.getenv('EMAIL_DELIVERY_MODE', 'log').strip().lower() or 'log'
+    smtp_host: str = os.getenv('SMTP_HOST', '').strip()
+    smtp_port: int = int(os.getenv('SMTP_PORT', '587'))
+    smtp_username: str = os.getenv('SMTP_USERNAME', '').strip()
+    smtp_password: str = os.getenv('SMTP_PASSWORD', '')
+    smtp_use_tls: bool = _get_bool('SMTP_USE_TLS', True)
+    smtp_from_email: str = os.getenv('SMTP_FROM_EMAIL', '').strip()
+    smtp_from_name: str = os.getenv('SMTP_FROM_NAME', 'WV Tech Solutions').strip() or 'WV Tech Solutions'
+
+    public_app_base_url: str = os.getenv('PUBLIC_APP_BASE_URL', 'http://127.0.0.1:5173').strip().rstrip('/')
+    booking_confirmation_action_base_url: str = os.getenv(
+        'BOOKING_CONFIRMATION_ACTION_BASE_URL',
+        'http://127.0.0.1:8000',
+    ).strip().rstrip('/')
+    client_portal_base_url: str = os.getenv(
+        'CLIENT_PORTAL_BASE_URL',
+        'http://127.0.0.1:5173',
+    ).strip().rstrip('/')
+    client_setup_path_prefix: str = os.getenv(
+        'CLIENT_SETUP_PATH_PREFIX',
+        '/cliente/ativacao',
+    ).strip() or '/cliente/ativacao'
+
+    email_logo_path: str = os.getenv('EMAIL_LOGO_PATH', '/imagens/logo.png').strip() or '/imagens/logo.png'
+    email_signature_image_path: str = os.getenv(
+        'EMAIL_SIGNATURE_IMAGE_PATH',
+        '/imagens/Assinatura_mail.png',
+    ).strip() or '/imagens/Assinatura_mail.png'
+    email_signature_name: str = os.getenv('EMAIL_SIGNATURE_NAME', 'Wagner Viviani').strip() or 'Wagner Viviani'
+    email_signature_phone: str = os.getenv('EMAIL_SIGNATURE_PHONE', '11 99688-4509').strip() or '11 99688-4509'
 
 
 settings = Settings()
