@@ -53,6 +53,39 @@ class AdminClientWorkspaceInviteItem(BaseModel):
     created_at: str = Field(..., description="Data de criação do convite")
 
 
+class AdminClientWorkspaceSummaryItem(BaseModel):
+    workspace_id: int = Field(..., description="Identificador interno do workspace")
+    workspace_status: str = Field(..., description="Status atual do workspace")
+    source_booking_request_id: int | None = Field(None, description="Solicitação de origem")
+    source_booking_status: str = Field(..., description="Status atual do booking de origem")
+    source_meeting_status: str = Field(..., description="Status da reunião de origem")
+    primary_contact_name: str = Field(..., description="Nome do contato principal")
+    primary_contact_email: str = Field(..., description="Email do contato principal")
+    primary_contact_phone: str = Field(..., description="Telefone do contato principal")
+    portal_notes: str | None = Field(None, description="Observações internas do portal")
+    activated_at: str | None = Field(None, description="Data de ativação do portal")
+    created_at: str = Field(..., description="Data de criação do workspace")
+    has_client_access: bool = Field(..., description="Indica se o cliente já acessou o portal")
+    latest_invite_status: str | None = Field(None, description="Status do convite mais recente")
+    latest_invite_sent_at: str | None = Field(None, description="Data de envio do convite mais recente")
+    latest_invite_accepted_at: str | None = Field(None, description="Data de aceite do convite mais recente")
+    meetings_count: int = Field(..., description="Quantidade total de reuniões vinculadas")
+    visible_meetings_count: int = Field(..., description="Quantidade de reuniões visíveis ao cliente")
+    latest_meeting: AdminClientWorkspaceMeetingItem | None = Field(
+        None,
+        description="Reunião mais recente vinculada ao workspace",
+    )
+    invites: list[AdminClientWorkspaceInviteItem] = Field(..., description="Convites emitidos")
+    meetings: list[AdminClientWorkspaceMeetingItem] = Field(..., description="Reuniões vinculadas")
+
+
+class AdminClientWorkspaceListResponse(BaseModel):
+    items: list[AdminClientWorkspaceSummaryItem] = Field(
+        ...,
+        description="Lista consolidada de workspaces do cliente",
+    )
+
+
 class AdminClientWorkspaceDetailResponse(BaseModel):
     workspace_id: int = Field(..., description="Identificador interno do workspace")
     workspace_status: str = Field(..., description="Status atual do workspace")

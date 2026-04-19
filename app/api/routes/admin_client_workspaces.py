@@ -5,21 +5,30 @@ from app.core.security import require_admin_auth
 from app.db.session import get_db
 from app.schemas.admin_client_workspaces import (
     AdminClientWorkspaceDetailResponse,
+    AdminClientWorkspaceListResponse,
     AdminClientWorkspaceProvisionRequest,
 )
 from app.services.admin_client_workspaces import (
     get_client_workspace_by_booking,
+    list_client_workspaces,
     provision_client_workspace_for_booking,
 )
 
 router = APIRouter(
-    prefix="/admin/bookings",
+    prefix="/admin",
     tags=["admin-client-workspaces"],
     dependencies=[Depends(require_admin_auth)],
 )
 
 
-@router.post("/{booking_id}/client-workspace", response_model=AdminClientWorkspaceDetailResponse)
+@router.get("/client-workspaces", response_model=AdminClientWorkspaceListResponse)
+def get_admin_client_workspaces(
+    db: Session = Depends(get_db),
+) -> AdminClientWorkspaceListResponse:
+    return list_client_workspaces(db=db)
+
+
+@router.post("/bookings/{booking_id}/client-workspace", response_model=AdminClientWorkspaceDetailResponse)
 def post_admin_client_workspace_for_booking(
     booking_id: int,
     payload: AdminClientWorkspaceProvisionRequest,
@@ -32,7 +41,7 @@ def post_admin_client_workspace_for_booking(
     )
 
 
-@router.get("/{booking_id}/client-workspace", response_model=AdminClientWorkspaceDetailResponse)
+@router.get("/bookings/{booking_id}/client-workspace", response_model=AdminClientWorkspaceDetailResponse)
 def get_admin_client_workspace_for_booking(
     booking_id: int,
     db: Session = Depends(get_db),

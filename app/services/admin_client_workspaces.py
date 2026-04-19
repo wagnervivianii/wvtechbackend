@@ -17,8 +17,10 @@ from app.models.client_workspace_meeting import ClientWorkspaceMeeting
 from app.schemas.admin_client_workspaces import (
     AdminClientWorkspaceDetailResponse,
     AdminClientWorkspaceInviteItem,
+    AdminClientWorkspaceListResponse,
     AdminClientWorkspaceMeetingItem,
     AdminClientWorkspaceProvisionRequest,
+    AdminClientWorkspaceSummaryItem,
 )
 
 
@@ -125,13 +127,9 @@ def _ensure_workspace(db: Session, booking: BookingRequest, portal_notes: str | 
     workspace.primary_contact_name = booking.name
     workspace.primary_contact_email = booking.email
     workspace.primary_contact_phone = booking.phone
-
-    if portal_notes is not None:
+    workspace.source_booking_request_id = booking.id
+    if portal_notes:
         workspace.portal_notes = portal_notes
-
-    if workspace.source_booking_request_id is None:
-        workspace.source_booking_request_id = booking.id
-
     db.add(workspace)
     db.flush()
     return workspace
@@ -144,9 +142,7 @@ def _ensure_workspace_meeting(
     booking: BookingRequest,
 ) -> ClientWorkspaceMeeting:
     meeting = db.scalar(
-        select(ClientWorkspaceMeeting).where(
-            ClientWorkspaceMeeting.booking_request_id == booking.id
-        )
+        select(ClientWorkspaceMeeting).where(ClientWorkspaceMeeting.booking_request_id == booking.id)
     )
 
     if meeting is None:
@@ -154,19 +150,28 @@ def _ensure_workspace_meeting(
             workspace_id=workspace.id,
             booking_request_id=booking.id,
             meeting_label=_build_meeting_label(booking),
+            meet_url=booking.meet_url,
+            meeting_notes=booking.meeting_notes,
+            transcript_text=booking.transcript_text,
+            transcript_summary=booking.transcript_summary,
+            meeting_started_at=booking.meeting_started_at,
+            meeting_ended_at=booking.meeting_ended_at,
             is_visible_to_client=True,
+            synced_from_booking_at=_now_local(),
         )
+        db.add(meeting)
+        db.flush()
+        return meeting
 
     meeting.workspace_id = workspace.id
     meeting.meeting_label = _build_meeting_label(booking)
     meeting.meet_url = booking.meet_url
+    meeting.meeting_notes = booking.meeting_notes
     meeting.transcript_text = booking.transcript_text
     meeting.transcript_summary = booking.transcript_summary
-    meeting.meeting_notes = booking.meeting_notes
     meeting.meeting_started_at = booking.meeting_started_at
     meeting.meeting_ended_at = booking.meeting_ended_at
     meeting.synced_from_booking_at = _now_local()
-
     db.add(meeting)
     db.flush()
     return meeting
@@ -180,7 +185,7 @@ def _create_workspace_invite(
     invite_ttl_hours: int,
 ) -> tuple[ClientWorkspaceInvite, str]:
     raw_token = secrets.token_urlsafe(32)
-    invite_token_hash = hashlib.sha256(raw_token.encode("utf-8")).hexdigest()
+    invite_token_hash = hashlib.sha256(raw_token.encode('utf-8')).hexdigest()
     now_local = _now_local()
 
     invite = ClientWorkspaceInvite(
@@ -225,6 +230,51 @@ def _build_detail_response(
         invites=[_serialize_invite(item) for item in invites],
         setup_token=setup_token,
         setup_path=(f"/cliente/ativacao/{setup_token}" if setup_token else None),
+    )
+
+
+def _serialize_workspace_summary(db: Session, workspace: ClientWorkspace) -> AdminClientWorkspaceSummaryItem:
+    booking = db.get(BookingRequest, workspace.source_booking_request_id) if workspace.source_booking_request_id else None
+    meetings = _load_workspace_meetings(db, workspace.id)
+    invites = _load_workspace_invites(db, workspace.id)
+    serialized_meetings = [_serialize_meeting(item) for item in meetings]
+    serialized_invites = [_serialize_invite(item) for item in invites]
+    latest_meeting = serialized_meetings[0] if serialized_meetings else None
+    latest_invite = serialized_invites[0] if serialized_invites else None
+    has_client_access = bool(workspace.activated_at) or any(invite.accepted_at for invite in invites)
+
+    return AdminClientWorkspaceSummaryItem(
+        workspace_id=workspace.id,
+        workspace_status=workspace.workspace_status,
+        source_booking_request_id=workspace.source_booking_request_id,
+        source_booking_status=booking.status if booking else 'unknown',
+        source_meeting_status=booking.meeting_status if booking else 'unknown',
+        primary_contact_name=workspace.primary_contact_name,
+        primary_contact_email=workspace.primary_contact_email,
+        primary_contact_phone=workspace.primary_contact_phone,
+        portal_notes=workspace.portal_notes,
+        activated_at=workspace.activated_at.isoformat() if workspace.activated_at else None,
+        created_at=workspace.created_at.isoformat(),
+        has_client_access=has_client_access,
+        latest_invite_status=latest_invite.invite_status if latest_invite else None,
+        latest_invite_sent_at=latest_invite.sent_at if latest_invite else None,
+        latest_invite_accepted_at=latest_invite.accepted_at if latest_invite else None,
+        meetings_count=len(serialized_meetings),
+        visible_meetings_count=sum(1 for meeting in serialized_meetings if meeting.is_visible_to_client),
+        latest_meeting=latest_meeting,
+        invites=serialized_invites,
+        meetings=serialized_meetings,
+    )
+
+
+def list_client_workspaces(db: Session) -> AdminClientWorkspaceListResponse:
+    workspaces = db.scalars(
+        select(ClientWorkspace)
+        .order_by(ClientWorkspace.created_at.desc(), ClientWorkspace.id.desc())
+    ).all()
+
+    return AdminClientWorkspaceListResponse(
+        items=[_serialize_workspace_summary(db, workspace) for workspace in workspaces]
     )
 
 

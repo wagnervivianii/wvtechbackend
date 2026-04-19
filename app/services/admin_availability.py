@@ -30,6 +30,24 @@ from app.services.availability import MONTH_LABELS, WEEKDAY_LABELS
 TERMINAL_MEETING_STATUSES = {"completed", "cancelled", "no_show"}
 
 
+def _extract_cancellation_reason(meeting_notes: str | None) -> str | None:
+    if not meeting_notes:
+        return None
+
+    for chunk in meeting_notes.split("\n\n"):
+        if chunk.startswith('[Motivo enviado ao cliente] '):
+            return chunk.removeprefix('[Motivo enviado ao cliente] ').strip() or None
+
+    return None
+
+
+def _google_calendar_cancelled(meeting_notes: str | None) -> bool:
+    if not meeting_notes:
+        return False
+
+    return '[Google Calendar] Evento cancelado automaticamente.' in meeting_notes
+
+
 def _now_local() -> datetime:
     return datetime.now(ZoneInfo(settings.app_timezone))
 
@@ -153,6 +171,8 @@ def _serialize_history_item(
     else:
         display_label = f"Solicitação #{booking.id}"
 
+    is_admin_cancelled = booking.status == 'cancelled_by_admin'
+
     return AdminBookingHistoryItem(
         id=booking.id,
         booking_date=booking.booking_date.isoformat() if booking.booking_date else None,
@@ -174,6 +194,9 @@ def _serialize_history_item(
         contact_confirmed_at=booking.contact_confirmed_at.isoformat() if booking.contact_confirmed_at else None,
         admin_reviewed_at=booking.admin_reviewed_at.isoformat() if booking.admin_reviewed_at else None,
         rejection_reason=booking.rejection_reason,
+        cancellation_reason=_extract_cancellation_reason(booking.meeting_notes) if is_admin_cancelled else None,
+        cancelled_at=booking.admin_reviewed_at.isoformat() if is_admin_cancelled and booking.admin_reviewed_at else None,
+        google_calendar_cancelled=_google_calendar_cancelled(booking.meeting_notes) if is_admin_cancelled else False,
         can_schedule_again=booking.can_schedule_again,
         has_client_workspace=workspace is not None,
         client_workspace_status=workspace.workspace_status if workspace else None,
@@ -181,6 +204,12 @@ def _serialize_history_item(
 
 
 def _booking_belongs_to_history(booking: BookingRequest, now_local: datetime) -> bool:
+    if booking.status == 'rejected':
+        return False
+
+    if booking.status == 'cancelled_by_admin':
+        return True
+
     if booking.meeting_status in TERMINAL_MEETING_STATUSES:
         return True
 
@@ -288,7 +317,7 @@ def _load_booking_history(db: Session) -> list[AdminBookingHistoryItem]:
 
     history_items: list[AdminBookingHistoryItem] = []
     for booking in bookings:
-        if booking.status == 'approved' or _booking_belongs_to_history(booking, now_local):
+        if booking.status in {'approved', 'cancelled_by_admin'} or _booking_belongs_to_history(booking, now_local):
             history_items.append(
                 _serialize_history_item(
                     booking,

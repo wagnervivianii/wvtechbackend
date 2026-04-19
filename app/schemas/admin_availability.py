@@ -49,6 +49,12 @@ class AdminBookingHistoryItem(BaseModel):
     contact_confirmed_at: str | None = Field(None, description="Data de confirmação do email")
     admin_reviewed_at: str | None = Field(None, description="Data da análise administrativa")
     rejection_reason: str | None = Field(None, description="Motivo de rejeição, quando houver")
+    cancellation_reason: str | None = Field(None, description="Motivo de cancelamento enviado ao cliente, quando houver")
+    cancelled_at: str | None = Field(None, description="Data do cancelamento administrativo, quando houver")
+    google_calendar_cancelled: bool = Field(
+        ...,
+        description="Indica se o evento foi marcado como cancelado no Google Calendar",
+    )
     can_schedule_again: bool = Field(
         ...,
         description="Indica se o contato já pode abrir uma nova solicitação",

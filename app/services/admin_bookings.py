@@ -348,9 +348,12 @@ def cancel_booking_request(
             detail='Somente reuniões aprovadas podem ser canceladas por esta ação.',
         )
 
+    google_calendar_cancelled = False
+
     if booking.meet_event_id:
         try:
             cancel_google_event_for_booking(event_id=booking.meet_event_id)
+            google_calendar_cancelled = True
         except GoogleCalendarIntegrationError as exc:
             raise HTTPException(
                 status_code=status.HTTP_502_BAD_GATEWAY,
@@ -364,6 +367,8 @@ def cancel_booking_request(
         notes.append(f'[Cancelamento] {payload.meeting_notes.strip()}')
     if payload.cancellation_reason:
         notes.append(f'[Motivo enviado ao cliente] {payload.cancellation_reason.strip()}')
+    if google_calendar_cancelled:
+        notes.append('[Google Calendar] Evento cancelado automaticamente.')
 
     booking.status = 'cancelled_by_admin'
     booking.meeting_status = 'cancelled'
