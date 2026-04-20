@@ -10,12 +10,16 @@ from app.schemas.client_portal import (
     ClientPortalWorkspaceResponse,
 )
 from app.services.client_auth import get_authenticated_client_context
-from app.services.client_workspace_artifacts import serialize_client_artifacts_for_meeting
+from app.services.client_workspace_artifacts import (
+    auto_sync_workspace_pending_google_artifacts_best_effort,
+    serialize_client_artifacts_for_meeting,
+)
 
 
 def get_client_workspace_portal(db: Session, claims: dict[str, object]) -> ClientPortalWorkspaceResponse:
     context = get_authenticated_client_context(db, claims)
     workspace = context.workspace
+    auto_sync_workspace_pending_google_artifacts_best_effort(db, workspace_id=workspace.id)
     meetings = db.scalars(
         select(ClientWorkspaceMeeting)
         .where(ClientWorkspaceMeeting.workspace_id == workspace.id)

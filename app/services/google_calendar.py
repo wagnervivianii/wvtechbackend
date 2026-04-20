@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime
 import json
+import logging
 import secrets
 import time
 from urllib import error, parse, request
@@ -28,6 +29,10 @@ class GoogleCalendarMeetingCancellationError(GoogleCalendarIntegrationError):
     """Falha ao cancelar evento da integração Google."""
 
 
+class GoogleCalendarMeetingAutoArtifactsConfigurationError(GoogleCalendarIntegrationError):
+    """Falha ao configurar auto artifacts no espaço do Google Meet."""
+
+
 @dataclass(frozen=True, slots=True)
 class GoogleCalendarMeetingResult:
     event_id: str
@@ -36,6 +41,9 @@ class GoogleCalendarMeetingResult:
 
 
 CALENDAR_API_BASE = 'https://www.googleapis.com/calendar/v3'
+MEET_API_BASE = 'https://meet.googleapis.com/v2'
+
+logger = logging.getLogger(__name__)
 
 
 def _ensure_google_calendar_configured() -> None:
@@ -250,6 +258,76 @@ def _delete_event_best_effort(*, access_token: str, event_id: str) -> None:
         return
 
 
+
+
+def _extract_meeting_code_from_meet_url(meet_url: str | None) -> str | None:
+    if not meet_url:
+        return None
+    parts = meet_url.rstrip('/').split('/')
+    if not parts:
+        return None
+    candidate = parts[-1].strip().lower()
+    if candidate.count('-') != 2:
+        return None
+    return candidate or None
+
+
+def configure_google_meet_space_auto_artifacts(*, meet_url: str | None) -> None:
+    if not settings.google_meet_auto_artifacts_enabled:
+        return
+
+    meeting_code = _extract_meeting_code_from_meet_url(meet_url)
+    if not meeting_code:
+        raise GoogleCalendarMeetingAutoArtifactsConfigurationError(
+            'Não foi possível identificar o meeting code para configurar os artifacts automáticos.'
+        )
+
+    access_token = _refresh_google_access_token()
+    encoded_space_alias = parse.quote(meeting_code, safe='')
+    space_payload = _http_json_request(
+        url=f'{MEET_API_BASE}/spaces/{encoded_space_alias}',
+        headers={'Authorization': f'Bearer {access_token}'},
+    )
+    space_name = space_payload.get('name')
+    if not isinstance(space_name, str) or not space_name.strip():
+        raise GoogleCalendarMeetingAutoArtifactsConfigurationError(
+            'A Google Meet API não retornou o nome do espaço para o meeting code informado.'
+        )
+
+    update_mask = (
+        'config.artifactConfig.recordingConfig.autoRecordingGeneration,'
+        'config.artifactConfig.transcriptionConfig.autoTranscriptionGeneration,'
+        'config.artifactConfig.smartNotesConfig.autoSmartNotesGeneration'
+    )
+    patch_query = parse.urlencode({'updateMask': update_mask})
+    patch_url = f"{MEET_API_BASE}/{parse.quote(space_name, safe='/')}?{patch_query}"
+    payload = {
+        'config': {
+            'artifactConfig': {
+                'recordingConfig': {
+                    'autoRecordingGeneration': 'ON' if settings.google_meet_auto_recording_enabled else 'OFF',
+                },
+                'transcriptionConfig': {
+                    'autoTranscriptionGeneration': 'ON' if settings.google_meet_auto_transcription_enabled else 'OFF',
+                },
+                'smartNotesConfig': {
+                    'autoSmartNotesGeneration': 'ON' if settings.google_meet_auto_smart_notes_enabled else 'OFF',
+                },
+            }
+        }
+    }
+
+    try:
+        _http_json_request(
+            url=patch_url,
+            method='PATCH',
+            headers={'Authorization': f'Bearer {access_token}'},
+            payload=payload,
+        )
+    except GoogleCalendarMeetingCreationError as exc:
+        raise GoogleCalendarMeetingAutoArtifactsConfigurationError(str(exc)) from exc
+
+
 def create_google_meet_event_for_booking(*, booking: BookingRequest, meeting_notes: str | None) -> GoogleCalendarMeetingResult:
     access_token = _refresh_google_access_token()
     start_at, end_at = _build_booking_datetime(booking)
@@ -302,10 +380,17 @@ def create_google_meet_event_for_booking(*, booking: BookingRequest, meeting_not
         )
 
     try:
-        return _poll_event_until_meet_ready(access_token=access_token, event_id=event_id)
+        result = _poll_event_until_meet_ready(access_token=access_token, event_id=event_id)
     except GoogleCalendarMeetingCreationError:
         _delete_event_best_effort(access_token=access_token, event_id=event_id)
         raise
+
+    try:
+        configure_google_meet_space_auto_artifacts(meet_url=result.meet_url)
+    except GoogleCalendarMeetingAutoArtifactsConfigurationError:
+        logger.exception('Falha ao configurar auto artifacts no espaço do Google Meet para booking_id=%s', booking.id)
+
+    return result
 
 
 def cancel_google_event_for_booking(*, event_id: str) -> None:

@@ -27,7 +27,10 @@ from app.schemas.admin_client_workspaces import (
     AdminClientWorkspaceProvisionRequest,
     AdminClientWorkspaceSummaryItem,
 )
-from app.services.client_workspace_artifacts import attach_admin_artifacts_to_meeting_item
+from app.services.client_workspace_artifacts import (
+    attach_admin_artifacts_to_meeting_item,
+    auto_sync_workspace_pending_google_artifacts_best_effort,
+)
 from app.services.email_templates import build_client_setup_url
 from app.services.google_drive import (
     GoogleDriveIntegrationError,
@@ -434,6 +437,7 @@ def _build_detail_response(
     workspace: ClientWorkspace,
     setup_token: str | None = None,
 ) -> AdminClientWorkspaceDetailResponse:
+    auto_sync_workspace_pending_google_artifacts_best_effort(db, workspace_id=workspace.id)
     meetings = _load_workspace_meetings(db, workspace.id)
     invites = _load_workspace_invites(db, workspace.id)
     account = _load_workspace_account(db, workspace.id)
@@ -461,6 +465,7 @@ def _build_detail_response(
 
 
 def _serialize_workspace_summary(db: Session, workspace: ClientWorkspace) -> AdminClientWorkspaceSummaryItem:
+    auto_sync_workspace_pending_google_artifacts_best_effort(db, workspace_id=workspace.id)
     booking = db.get(BookingRequest, workspace.source_booking_request_id) if workspace.source_booking_request_id else None
     meetings = _load_workspace_meetings(db, workspace.id)
     invites = _load_workspace_invites(db, workspace.id)

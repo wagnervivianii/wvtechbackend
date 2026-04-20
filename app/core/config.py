@@ -127,6 +127,31 @@ class Settings:
     google_meet_retry_attempts: int = int(os.getenv('GOOGLE_MEET_RETRY_ATTEMPTS', '6'))
     google_meet_retry_delay_seconds: float = float(os.getenv('GOOGLE_MEET_RETRY_DELAY_SECONDS', '1.0'))
 
+
+    google_meet_auto_artifacts_enabled: bool = _get_bool(
+        'GOOGLE_MEET_AUTO_ARTIFACTS_ENABLED',
+        True,
+    )
+    google_meet_auto_recording_enabled: bool = _get_bool(
+        'GOOGLE_MEET_AUTO_RECORDING_ENABLED',
+        True,
+    )
+    google_meet_auto_transcription_enabled: bool = _get_bool(
+        'GOOGLE_MEET_AUTO_TRANSCRIPTION_ENABLED',
+        True,
+    )
+    google_meet_auto_smart_notes_enabled: bool = _get_bool(
+        'GOOGLE_MEET_AUTO_SMART_NOTES_ENABLED',
+        True,
+    )
+    google_artifacts_auto_sync_enabled: bool = _get_bool(
+        'GOOGLE_ARTIFACTS_AUTO_SYNC_ENABLED',
+        True,
+    )
+    google_artifacts_auto_sync_max_meetings_per_request: int = int(
+        os.getenv('GOOGLE_ARTIFACTS_AUTO_SYNC_MAX_MEETINGS_PER_REQUEST', '3')
+    )
+
     google_drive_clients_root_folder_id: str = os.getenv(
         'GOOGLE_DRIVE_CLIENTS_ROOT_FOLDER_ID',
         '',

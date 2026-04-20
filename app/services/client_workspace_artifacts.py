@@ -763,6 +763,35 @@ def sync_workspace_pending_google_artifacts(
         items=items,
     )
 
+
+def auto_sync_workspace_pending_google_artifacts_best_effort(
+    db: Session,
+    *,
+    workspace_id: int,
+    force_resync: bool = False,
+    max_meetings: int | None = None,
+) -> AdminClientWorkspaceMeetingArtifactBatchSyncResponse | None:
+    if not settings.google_artifacts_auto_sync_enabled:
+        return None
+
+    effective_max_meetings = max_meetings or settings.google_artifacts_auto_sync_max_meetings_per_request
+    if effective_max_meetings <= 0:
+        return None
+
+    try:
+        return sync_workspace_pending_google_artifacts(
+            db,
+            workspace_id=workspace_id,
+            payload=AdminClientWorkspaceMeetingArtifactBatchSyncRequest(
+                max_meetings=effective_max_meetings,
+                force_resync=force_resync,
+            ),
+        )
+    except HTTPException:
+        db.rollback()
+        return None
+
+
 def get_workspace_artifacts_for_admin(
     db: Session,
     *,
@@ -776,6 +805,7 @@ def get_workspace_artifacts_for_admin(
             detail='Workspace do cliente não encontrado.',
         )
 
+    auto_sync_workspace_pending_google_artifacts_best_effort(db, workspace_id=workspace_id)
     hydrated_meetings = [attach_admin_artifacts_to_meeting_item(db, meeting_item) for meeting_item in meetings]
 
     return AdminClientWorkspaceArtifactsResponse(
