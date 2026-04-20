@@ -211,6 +211,54 @@ class AdminClientWorkspaceArtifactsResponse(BaseModel):
         description='Reuniões do workspace com seus artefatos persistidos',
     )
 
+class AdminClientWorkspaceMeetingArtifactBatchSyncRequest(BaseModel):
+    max_meetings: int = Field(10, ge=1, le=100, description='Quantidade máxima de reuniões elegíveis a sincronizar nesta execução')
+    force_resync: bool = Field(False, description='Se verdadeiro, tenta sincronizar mesmo reuniões que já possuem artefatos Google disponíveis')
+
+
+class AdminClientWorkspaceMeetingArtifactBatchSyncItem(BaseModel):
+    meeting_id: int = Field(..., description='Identificador interno da reunião do workspace')
+    meeting_label: str = Field(..., description='Rótulo consolidado da reunião')
+    sync_status: str = Field(..., description='Status final da tentativa de sincronização')
+    message: str | None = Field(None, description='Mensagem resumida do resultado da tentativa')
+    conference_record_name: str | None = Field(None, description='Conference record selecionada no Google Meet')
+    synchronized_at: str = Field(..., description='Momento em que a tentativa foi executada')
+    artifacts_upserted: int = Field(..., description='Quantidade de artefatos persistidos/atualizados na tentativa')
+    recordings_synced: int = Field(..., description='Quantidade de gravações sincronizadas na tentativa')
+    transcripts_synced: int = Field(..., description='Quantidade de transcrições sincronizadas na tentativa')
+    notes_synced: int = Field(..., description='Quantidade de smart notes sincronizadas na tentativa')
+
+
+class AdminClientWorkspaceMeetingArtifactBatchSyncResponse(BaseModel):
+    workspace_id: int = Field(..., description='Identificador interno do workspace')
+    processed_meetings_count: int = Field(..., description='Quantidade de reuniões realmente processadas nesta execução')
+    eligible_meetings_count: int = Field(..., description='Quantidade de reuniões elegíveis encontradas antes do limite')
+    synchronized_meetings_count: int = Field(..., description='Quantidade de reuniões com algum artefato efetivamente sincronizado')
+    no_artifacts_available_count: int = Field(..., description='Quantidade de reuniões sem artefatos prontos no Google Meet')
+    conference_not_found_count: int = Field(..., description='Quantidade de reuniões em que a conference record ainda não foi encontrada')
+    failed_meetings_count: int = Field(..., description='Quantidade de reuniões que falharam durante a tentativa')
+    items: list[AdminClientWorkspaceMeetingArtifactBatchSyncItem] = Field(default_factory=list, description='Resultado individual de cada reunião processada')
+
+
+class AdminClientWorkspaceMeetingArtifactSyncResponse(BaseModel):
+    workspace_id: int = Field(..., description='Identificador interno do workspace')
+    meeting_id: int = Field(..., description='Identificador interno da reunião do workspace')
+    meeting_label: str = Field(..., description='Rótulo consolidado da reunião sincronizada')
+    meeting_code: str | None = Field(None, description='Código do Google Meet associado à reunião')
+    conference_record_name: str | None = Field(None, description='Conference record selecionada no Google Meet')
+    sync_status: str = Field(..., description='Status da sincronização automática com o Google Meet')
+    message: str | None = Field(None, description='Mensagem resumida do resultado da sincronização')
+    synchronized_at: str = Field(..., description='Momento em que a sincronização foi executada')
+    artifacts_found: int = Field(..., description='Quantidade de artefatos prontos encontrados no Google Meet')
+    artifacts_upserted: int = Field(..., description='Quantidade de artefatos persistidos/atualizados no sistema')
+    recordings_synced: int = Field(..., description='Quantidade de gravações sincronizadas')
+    transcripts_synced: int = Field(..., description='Quantidade de transcrições sincronizadas')
+    notes_synced: int = Field(..., description='Quantidade de smart notes sincronizadas')
+    artifacts: list[AdminClientWorkspaceMeetingArtifactItem] = Field(
+        default_factory=list,
+        description='Artefatos persistidos na reunião após a sincronização',
+    )
+
 
 class AdminClientWorkspaceDetailResponse(BaseModel):
     workspace_id: int = Field(..., description='Identificador interno do workspace')

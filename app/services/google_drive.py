@@ -41,6 +41,16 @@ class GoogleDriveWorkspaceFolders:
     archive: GoogleDriveFolderRef
 
 
+@dataclass(frozen=True, slots=True)
+class GoogleDriveFileRef:
+    file_id: str
+    file_name: str
+    web_view_link: str | None
+    mime_type: str | None
+    file_size_bytes: int | None
+    parents: tuple[str, ...]
+
+
 def is_google_drive_workspace_storage_configured() -> bool:
     return bool(
         settings.google_drive_auto_create_client_folders
@@ -68,6 +78,21 @@ def _ensure_google_drive_configured() -> None:
     if missing:
         raise GoogleDriveIntegrationNotConfiguredError(
             'Estrutura Google Drive do cliente não configurada. Defina: ' + ', '.join(missing) + '.'
+        )
+
+
+def _ensure_google_drive_credentials_configured() -> None:
+    missing: list[str] = []
+    if not settings.google_oauth_client_id:
+        missing.append('GOOGLE_OAUTH_CLIENT_ID')
+    if not settings.google_oauth_client_secret:
+        missing.append('GOOGLE_OAUTH_CLIENT_SECRET')
+    if not settings.google_oauth_refresh_token:
+        missing.append('GOOGLE_OAUTH_REFRESH_TOKEN')
+
+    if missing:
+        raise GoogleDriveIntegrationNotConfiguredError(
+            'Credenciais Google Drive não configuradas. Defina: ' + ', '.join(missing) + '.'
         )
 
 
@@ -112,7 +137,7 @@ def _http_json_request(
 
 
 def _escape_drive_query_literal(value: str) -> str:
-    return value.replace('\\', '\\\\').replace("'", "\\'")
+    return value.replace("\\", "\\\\").replace("'", "\\'")
 
 
 def _slugify(value: str) -> str:
@@ -129,6 +154,84 @@ def _build_client_root_folder_name(*, workspace_id: int, primary_contact_name: s
 
 def _folder_web_url(folder_id: str) -> str:
     return f'https://drive.google.com/drive/folders/{folder_id}'
+
+
+def _get_google_drive_access_token() -> str:
+    _ensure_google_drive_credentials_configured()
+    return refresh_google_workspace_access_token()
+
+
+def _serialize_drive_file(file_data: dict, *, fallback_id: str | None = None) -> GoogleDriveFileRef:
+    file_id = file_data.get('id') if isinstance(file_data.get('id'), str) else fallback_id
+    if not isinstance(file_id, str) or not file_id.strip():
+        raise GoogleDriveIntegrationError('A Google Drive API não retornou um file_id válido.')
+
+    file_name = file_data.get('name') if isinstance(file_data.get('name'), str) else file_id
+    web_view_link = file_data.get('webViewLink') if isinstance(file_data.get('webViewLink'), str) else None
+    mime_type = file_data.get('mimeType') if isinstance(file_data.get('mimeType'), str) else None
+
+    size_raw = file_data.get('size')
+    if isinstance(size_raw, int):
+        file_size_bytes = size_raw
+    elif isinstance(size_raw, str) and size_raw.isdigit():
+        file_size_bytes = int(size_raw)
+    else:
+        file_size_bytes = None
+
+    parents_raw = file_data.get('parents')
+    parents = tuple(parent for parent in parents_raw if isinstance(parent, str) and parent.strip()) if isinstance(parents_raw, list) else tuple()
+
+    return GoogleDriveFileRef(
+        file_id=file_id.strip(),
+        file_name=file_name.strip() if isinstance(file_name, str) else file_id.strip(),
+        web_view_link=web_view_link,
+        mime_type=mime_type,
+        file_size_bytes=file_size_bytes,
+        parents=parents,
+    )
+
+
+def get_google_drive_file_metadata(*, file_id: str) -> GoogleDriveFileRef:
+    access_token = _get_google_drive_access_token()
+    query_string = parse.urlencode(
+        {
+            'fields': 'id,name,webViewLink,mimeType,size,parents',
+            'supportsAllDrives': 'true',
+        }
+    )
+    payload = _http_json_request(
+        url=f"{DRIVE_API_BASE}/files/{parse.quote(file_id, safe='')}?{query_string}",
+        headers={'Authorization': f'Bearer {access_token}'},
+    )
+    return _serialize_drive_file(payload, fallback_id=file_id)
+
+
+def move_google_drive_file_to_folder(*, file_id: str, target_folder_id: str) -> GoogleDriveFileRef:
+    access_token = _get_google_drive_access_token()
+    current_file = get_google_drive_file_metadata(file_id=file_id)
+
+    remove_parents = ','.join(parent for parent in current_file.parents if parent != target_folder_id)
+    add_parent = target_folder_id if target_folder_id not in current_file.parents else ''
+
+    if target_folder_id in current_file.parents and not remove_parents:
+        return current_file
+
+    query_params = {
+        'supportsAllDrives': 'true',
+        'fields': 'id,name,webViewLink,mimeType,size,parents',
+    }
+    if add_parent:
+        query_params['addParents'] = add_parent
+    if remove_parents:
+        query_params['removeParents'] = remove_parents
+
+    payload = _http_json_request(
+        url=f"{DRIVE_API_BASE}/files/{parse.quote(file_id, safe='')}?{parse.urlencode(query_params)}",
+        method='PATCH',
+        headers={'Authorization': f'Bearer {access_token}'},
+        payload={},
+    )
+    return _serialize_drive_file(payload, fallback_id=file_id)
 
 
 def _find_folder_by_name(
@@ -257,11 +360,6 @@ def ensure_client_workspace_drive_folders(
     )
 
     if existing_root_folder_id:
-        root_folder = GoogleDriveFolderRef(
-            folder_id=existing_root_folder_id,
-            folder_name=root_folder_name or 'workspace_root',
-            web_view_link=_folder_web_url(existing_root_folder_id),
-        )
         root_details = _http_json_request(
             url=f"{DRIVE_API_BASE}/files/{parse.quote(existing_root_folder_id, safe='')}?{parse.urlencode({'fields': 'id,name,webViewLink', 'supportsAllDrives': 'true'})}",
             headers={'Authorization': f'Bearer {access_token}'},

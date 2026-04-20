@@ -7,9 +7,12 @@ from app.schemas.admin_client_workspaces import (
     AdminClientWorkspaceArtifactUpsertRequest,
     AdminClientWorkspaceArtifactsResponse,
     AdminClientWorkspaceDetailResponse,
+    AdminClientWorkspaceMeetingArtifactBatchSyncRequest,
+    AdminClientWorkspaceMeetingArtifactBatchSyncResponse,
     AdminClientWorkspaceInviteRefreshRequest,
     AdminClientWorkspaceListResponse,
     AdminClientWorkspaceMeetingArtifactItem,
+    AdminClientWorkspaceMeetingArtifactSyncResponse,
     AdminClientWorkspaceProvisionRequest,
 )
 from app.services.admin_client_workspaces import (
@@ -21,6 +24,8 @@ from app.services.admin_client_workspaces import (
 )
 from app.services.client_workspace_artifacts import (
     get_workspace_artifacts_for_admin,
+    sync_workspace_meeting_artifacts_from_google,
+    sync_workspace_pending_google_artifacts,
     upsert_workspace_meeting_artifact,
 )
 
@@ -120,5 +125,37 @@ def post_admin_client_workspace_meeting_artifact(
         db=db,
         workspace_id=workspace_id,
         meeting_id=meeting_id,
+        payload=payload,
+    )
+
+
+@router.post(
+    "/client-workspaces/{workspace_id}/meetings/{meeting_id}/artifacts/sync-google",
+    response_model=AdminClientWorkspaceMeetingArtifactSyncResponse,
+)
+def post_admin_client_workspace_meeting_artifact_google_sync(
+    workspace_id: int,
+    meeting_id: int,
+    db: Session = Depends(get_db),
+) -> AdminClientWorkspaceMeetingArtifactSyncResponse:
+    return sync_workspace_meeting_artifacts_from_google(
+        db=db,
+        workspace_id=workspace_id,
+        meeting_id=meeting_id,
+    )
+
+
+@router.post(
+    "/client-workspaces/{workspace_id}/artifacts/sync-google-pending",
+    response_model=AdminClientWorkspaceMeetingArtifactBatchSyncResponse,
+)
+def post_admin_client_workspace_pending_google_artifacts_sync(
+    workspace_id: int,
+    payload: AdminClientWorkspaceMeetingArtifactBatchSyncRequest,
+    db: Session = Depends(get_db),
+) -> AdminClientWorkspaceMeetingArtifactBatchSyncResponse:
+    return sync_workspace_pending_google_artifacts(
+        db=db,
+        workspace_id=workspace_id,
         payload=payload,
     )
