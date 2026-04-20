@@ -120,6 +120,18 @@ class AdminBookingDecisionResponse(BaseModel):
     contact_confirmed_at: str | None = Field(None, description="Data de confirmação do email")
     admin_reviewed_at: str | None = Field(None, description="Data da revisão administrativa")
     rejection_reason: str | None = Field(None, description="Motivo da rejeição, quando existir")
+    cancellation_reason: str | None = Field(
+        None,
+        description="Motivo do cancelamento enviado ao cliente, quando existir",
+    )
+    cancelled_at: str | None = Field(
+        None,
+        description="Data do cancelamento administrativo, quando houver",
+    )
+    google_calendar_cancelled: bool = Field(
+        False,
+        description="Indica se o cancelamento do evento foi confirmado localmente no Google Calendar",
+    )
     can_schedule_again: bool = Field(..., description="Indica se já pode abrir novo pedido")
     client_workspace: AdminClientWorkspaceDetailResponse | None = Field(
         None,

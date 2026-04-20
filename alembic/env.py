@@ -18,8 +18,11 @@ from app.models.availability_slot import AvailabilitySlot  # noqa: F401
 from app.models.booking_request import BookingRequest  # noqa: F401
 from app.models.booking_request_confirmation import BookingRequestConfirmation  # noqa: F401
 from app.models.client_workspace import ClientWorkspace  # noqa: F401
+from app.models.client_workspace_account import ClientWorkspaceAccount  # noqa: F401
 from app.models.client_workspace_invite import ClientWorkspaceInvite  # noqa: F401
 from app.models.client_workspace_meeting import ClientWorkspaceMeeting  # noqa: F401
+from app.models.client_workspace_meeting_artifact import ClientWorkspaceMeetingArtifact  # noqa: F401
+from app.models.client_workspace_password_reset_token import ClientWorkspacePasswordResetToken  # noqa: F401
 
 config = context.config
 
@@ -27,21 +30,21 @@ if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
 config.set_main_option(
-    "sqlalchemy.url",
-    settings.database_url.replace("%", "%%"),
+    'sqlalchemy.url',
+    settings.database_url.replace('%', '%%'),
 )
 
 target_metadata = Base.metadata
 
 
 def run_migrations_offline() -> None:
-    url = config.get_main_option("sqlalchemy.url")
+    url = config.get_main_option('sqlalchemy.url')
     context.configure(
         url=url,
         target_metadata=target_metadata,
         literal_binds=True,
         compare_type=True,
-        dialect_opts={"paramstyle": "named"},
+        dialect_opts={'paramstyle': 'named'},
     )
 
     with context.begin_transaction():
@@ -51,7 +54,7 @@ def run_migrations_offline() -> None:
 def run_migrations_online() -> None:
     connectable = engine_from_config(
         config.get_section(config.config_ini_section, {}),
-        prefix="sqlalchemy.",
+        prefix='sqlalchemy.',
         poolclass=pool.NullPool,
     )
 

@@ -109,6 +109,24 @@ def _build_display_label(booking: BookingRequest) -> str:
     return f'Solicitação #{booking.id}'
 
 
+def _extract_cancellation_reason(meeting_notes: str | None) -> str | None:
+    if not meeting_notes:
+        return None
+
+    for chunk in meeting_notes.split('\n\n'):
+        if chunk.startswith('[Motivo enviado ao cliente] '):
+            return chunk.removeprefix('[Motivo enviado ao cliente] ').strip() or None
+
+    return None
+
+
+def _google_calendar_cancelled(meeting_notes: str | None) -> bool:
+    if not meeting_notes:
+        return False
+
+    return '[Google Calendar] Evento cancelado automaticamente.' in meeting_notes
+
+
 def _serialize_pending_review_item(booking: BookingRequest) -> AdminBookingPendingReviewItem:
     return AdminBookingPendingReviewItem(
         id=booking.id,
@@ -142,6 +160,8 @@ def _serialize_decision_response(
     db: Session,
     booking: BookingRequest,
 ) -> AdminBookingDecisionResponse:
+    is_admin_cancelled = booking.status == 'cancelled_by_admin'
+
     return AdminBookingDecisionResponse(
         id=booking.id,
         status=booking.status,
@@ -163,6 +183,9 @@ def _serialize_decision_response(
             booking.admin_reviewed_at.isoformat() if booking.admin_reviewed_at else None
         ),
         rejection_reason=booking.rejection_reason,
+        cancellation_reason=_extract_cancellation_reason(booking.meeting_notes) if is_admin_cancelled else None,
+        cancelled_at=booking.admin_reviewed_at.isoformat() if is_admin_cancelled and booking.admin_reviewed_at else None,
+        google_calendar_cancelled=_google_calendar_cancelled(booking.meeting_notes) if is_admin_cancelled else False,
         can_schedule_again=booking.can_schedule_again,
         client_workspace=_load_workspace_detail_or_none(db, booking.id),
     )

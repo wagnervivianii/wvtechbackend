@@ -35,6 +35,27 @@ class Settings:
     admin_token_ttl_minutes: int = int(os.getenv('ADMIN_TOKEN_TTL_MINUTES', '480'))
     admin_token_issuer: str = os.getenv('ADMIN_TOKEN_ISSUER', 'wvtechsolutions-admin')
 
+    client_auth_token_secret: str = os.getenv(
+        'CLIENT_AUTH_TOKEN_SECRET',
+        os.getenv('ADMIN_TOKEN_SECRET', ''),
+    ).strip()
+    client_auth_token_ttl_minutes: int = int(
+        os.getenv('CLIENT_AUTH_TOKEN_TTL_MINUTES', '720')
+    )
+    client_auth_token_issuer: str = os.getenv(
+        'CLIENT_AUTH_TOKEN_ISSUER',
+        'wvtechsolutions-client',
+    ).strip() or 'wvtechsolutions-client'
+    client_google_state_ttl_minutes: int = int(
+        os.getenv('CLIENT_GOOGLE_STATE_TTL_MINUTES', '15')
+    )
+    client_password_reset_ttl_minutes: int = int(
+        os.getenv('CLIENT_PASSWORD_RESET_TTL_MINUTES', '60')
+    )
+    client_password_hash_iterations: int = int(
+        os.getenv('CLIENT_PASSWORD_HASH_ITERATIONS', '390000')
+    )
+
     booking_confirmation_ttl_hours: int = int(
         os.getenv('BOOKING_CONFIRMATION_TTL_HOURS', '48')
     )
@@ -65,11 +86,30 @@ class Settings:
         'CLIENT_PORTAL_BASE_URL',
         'http://127.0.0.1:5173',
     ).strip().rstrip('/')
+    client_login_path_prefix: str = os.getenv(
+        'CLIENT_LOGIN_PATH_PREFIX',
+        '/cliente/login',
+    ).strip() or '/cliente/login'
     client_setup_path_prefix: str = os.getenv(
         'CLIENT_SETUP_PATH_PREFIX',
         '/cliente/ativacao',
     ).strip() or '/cliente/ativacao'
-
+    client_password_reset_path_prefix: str = os.getenv(
+        'CLIENT_PASSWORD_RESET_PATH_PREFIX',
+        '/cliente/redefinir-senha',
+    ).strip() or '/cliente/redefinir-senha'
+    client_forgot_password_path_prefix: str = os.getenv(
+        'CLIENT_FORGOT_PASSWORD_PATH_PREFIX',
+        '/cliente/esqueci-senha',
+    ).strip() or '/cliente/esqueci-senha'
+    client_portal_home_path_prefix: str = os.getenv(
+        'CLIENT_PORTAL_HOME_PATH_PREFIX',
+        '/cliente',
+    ).strip() or '/cliente'
+    client_google_callback_path_prefix: str = os.getenv(
+        'CLIENT_GOOGLE_CALLBACK_PATH_PREFIX',
+        '/cliente/google/callback',
+    ).strip() or '/cliente/google/callback'
 
     google_oauth_client_id: str = os.getenv('GOOGLE_OAUTH_CLIENT_ID', '').strip()
     google_oauth_client_secret: str = os.getenv('GOOGLE_OAUTH_CLIENT_SECRET', '')
@@ -86,6 +126,40 @@ class Settings:
     ).strip() or 'WV Tech Solutions | Reunião'
     google_meet_retry_attempts: int = int(os.getenv('GOOGLE_MEET_RETRY_ATTEMPTS', '6'))
     google_meet_retry_delay_seconds: float = float(os.getenv('GOOGLE_MEET_RETRY_DELAY_SECONDS', '1.0'))
+
+    google_drive_clients_root_folder_id: str = os.getenv(
+        'GOOGLE_DRIVE_CLIENTS_ROOT_FOLDER_ID',
+        '',
+    ).strip()
+    google_drive_auto_create_client_folders: bool = _get_bool(
+        'GOOGLE_DRIVE_AUTO_CREATE_CLIENT_FOLDERS',
+        True,
+    )
+
+    client_google_oauth_client_id: str = os.getenv(
+        'CLIENT_GOOGLE_OAUTH_CLIENT_ID',
+        os.getenv('GOOGLE_OAUTH_CLIENT_ID', ''),
+    ).strip()
+    client_google_oauth_client_secret: str = os.getenv(
+        'CLIENT_GOOGLE_OAUTH_CLIENT_SECRET',
+        os.getenv('GOOGLE_OAUTH_CLIENT_SECRET', ''),
+    )
+    client_google_oauth_authorize_url: str = os.getenv(
+        'CLIENT_GOOGLE_OAUTH_AUTHORIZE_URL',
+        'https://accounts.google.com/o/oauth2/v2/auth',
+    ).strip() or 'https://accounts.google.com/o/oauth2/v2/auth'
+    client_google_oauth_token_url: str = os.getenv(
+        'CLIENT_GOOGLE_OAUTH_TOKEN_URL',
+        'https://oauth2.googleapis.com/token',
+    ).strip() or 'https://oauth2.googleapis.com/token'
+    client_google_oauth_userinfo_url: str = os.getenv(
+        'CLIENT_GOOGLE_OAUTH_USERINFO_URL',
+        'https://openidconnect.googleapis.com/v1/userinfo',
+    ).strip() or 'https://openidconnect.googleapis.com/v1/userinfo'
+    client_google_oauth_scope: str = os.getenv(
+        'CLIENT_GOOGLE_OAUTH_SCOPE',
+        'openid email profile',
+    ).strip() or 'openid email profile'
 
     email_logo_path: str = os.getenv('EMAIL_LOGO_PATH', '/imagens/logo.png').strip() or '/imagens/logo.png'
     email_signature_image_path: str = os.getenv(

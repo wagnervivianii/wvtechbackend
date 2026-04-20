@@ -46,6 +46,15 @@ def build_client_setup_url(setup_path: str | None) -> str | None:
     return _join_url(settings.client_portal_base_url, setup_path)
 
 
+def build_client_login_url() -> str:
+    return _join_url(settings.client_portal_base_url, settings.client_login_path_prefix)
+
+
+def build_client_password_reset_url(raw_token: str) -> str:
+    base_url = _join_url(settings.client_portal_base_url, settings.client_password_reset_path_prefix)
+    return f'{base_url}?token={raw_token}'
+
+
 def build_confirmation_result_url(*, status: str, booking_id: int | None = None) -> str:
     path = settings.booking_confirmation_result_path_prefix.rstrip('/')
     query_params: dict[str, str] = {'status': status}
@@ -57,7 +66,7 @@ def build_confirmation_result_url(*, status: str, booking_id: int | None = None)
 def build_confirmation_action_url(raw_token: str) -> str:
     return _join_url(
         settings.booking_confirmation_action_base_url,
-        f"/bookings/confirm/{raw_token}",
+        f'/bookings/confirm/{raw_token}',
     )
 
 
@@ -92,6 +101,9 @@ def _render_html_shell(
     cta_label: str | None = None,
     cta_url: str | None = None,
     cta_hint: str | None = None,
+    secondary_cta_label: str | None = None,
+    secondary_cta_url: str | None = None,
+    secondary_cta_hint: str | None = None,
     info_box_lines: list[str] | None = None,
 ) -> str:
     body_html = ''.join(
@@ -115,15 +127,29 @@ def _render_html_shell(
     cta_html = ''
     if cta_label and cta_url:
         cta_html = f'''
-          <div style="margin:28px 0 18px;">
+          <div style="margin:28px 0 10px;">
             <a href="{escape(cta_url)}" style="display:inline-block;border-radius:999px;background:linear-gradient(135deg,#22d3ee 0%,#38bdf8 100%);padding:14px 22px;color:#082f49;font-size:14px;font-weight:700;text-decoration:none;box-shadow:0 10px 28px rgba(34,211,238,0.35);">{escape(cta_label)}</a>
           </div>
         '''
 
+    secondary_cta_html = ''
+    if secondary_cta_label and secondary_cta_url:
+        secondary_cta_html = f'''
+          <div style="margin:0 0 16px;">
+            <a href="{escape(secondary_cta_url)}" style="display:inline-block;border-radius:999px;border:1px solid rgba(103,232,249,0.22);padding:12px 20px;color:#e2e8f0;font-size:14px;font-weight:700;text-decoration:none;">{escape(secondary_cta_label)}</a>
+          </div>
+        '''
+
     hint_html = ''
-    if cta_hint:
-        hint_html = (
-            f'<p style="margin:0 0 18px;color:#94a3b8;font-size:13px;line-height:1.7;">{escape(cta_hint)}</p>'
+    if cta_hint or secondary_cta_hint:
+        hint_parts = []
+        if cta_hint:
+            hint_parts.append(cta_hint)
+        if secondary_cta_hint:
+            hint_parts.append(secondary_cta_hint)
+        hint_html = ''.join(
+            f'<p style="margin:0 0 18px;color:#94a3b8;font-size:13px;line-height:1.7;">{escape(item)}</p>'
+            for item in hint_parts
         )
 
     return f'''<!doctype html>
@@ -148,6 +174,7 @@ def _render_html_shell(
                 {info_box_html}
                 {body_html}
                 {cta_html}
+                {secondary_cta_html}
                 {hint_html}
               </td>
             </tr>
@@ -201,9 +228,7 @@ def build_confirmation_request_email(*, booking: BookingRequest, confirmation_ur
 def build_booking_approved_email(*, booking: BookingRequest, client_setup_url: str | None) -> EmailContent:
     context = build_booking_context(booking)
     subject = 'Reunião confirmada | WV Tech Solutions'
-    intro = (
-        f'Olá, {context.recipient_name}. Sua solicitação foi validada e a reunião está confirmada.'
-    )
+    intro = f'Olá, {context.recipient_name}. Sua solicitação foi validada e a reunião está confirmada.'
     info_box_lines = []
     if context.meeting_date:
         info_box_lines.append(f'Data da reunião: {context.meeting_date}')
@@ -211,15 +236,24 @@ def build_booking_approved_email(*, booking: BookingRequest, client_setup_url: s
         info_box_lines.append(f'Horário: {context.meeting_time_label} (horário de Brasília)')
 
     body_lines = [
-        'O link da reunião segue abaixo. Mesmo sem conta Google, você poderá entrar como visitante e será admitido na sala.',
+        'Abaixo seguem os acessos principais desta etapa do projeto.',
+        'Mesmo sem conta Google, você poderá entrar na reunião como visitante e aguardar admissão na sala.',
         'Recomendamos acessar o link alguns minutos antes do horário agendado.',
         'Caso tente entrar com muita antecedência, talvez seja necessário aguardar o início da reunião ou a liberação pelo organizador.',
-        'Você também receberá os próximos passos pelos canais de contato já informados.',
     ]
     if client_setup_url:
         body_lines.append(
-            'Sua área do cliente já está disponível para ativação. Nela ficarão armazenadas as reuniões e as respectivas transcrições durante a vigência do projeto.'
+            'Sua área do cliente já está disponível para ativação. Nela ficarão armazenadas as reuniões, links e transcrições durante a vigência do projeto.'
         )
+
+    secondary_label = None
+    secondary_url = None
+    secondary_hint = None
+    if booking.meet_url and client_setup_url:
+        secondary_label = 'Ativar área do cliente'
+        secondary_url = client_setup_url
+        secondary_hint = 'Ative sua área do cliente para acompanhar materiais, reuniões e próximos passos.'
+
     html = _render_html_shell(
         title='Reunião confirmada',
         eyebrow='WV Tech Solutions',
@@ -227,7 +261,10 @@ def build_booking_approved_email(*, booking: BookingRequest, client_setup_url: s
         body_lines=body_lines,
         cta_label='Entrar na reunião' if booking.meet_url else ('Ativar área do cliente' if client_setup_url else None),
         cta_url=booking.meet_url or client_setup_url,
-        cta_hint='Guarde esta mensagem. O mesmo link também ficará disponível na sua área do cliente.' if booking.meet_url else ('Guarde este link para acessar seu ambiente de acompanhamento do projeto.' if client_setup_url else None),
+        cta_hint='Guarde esta mensagem. Você poderá voltar à reunião sempre que necessário.' if booking.meet_url else None,
+        secondary_cta_label=secondary_label,
+        secondary_cta_url=secondary_url,
+        secondary_cta_hint=secondary_hint,
         info_box_lines=info_box_lines or None,
     )
     text_parts = [
@@ -242,22 +279,19 @@ def build_booking_approved_email(*, booking: BookingRequest, client_setup_url: s
     if booking.meet_url:
         text_parts.append(f'Link da reunião: {booking.meet_url}')
         text_parts.append('Mesmo sem conta Google, você poderá entrar como visitante e aguardar admissão na sala.')
+    if client_setup_url:
+        text_parts.append(f'Área do cliente: {client_setup_url}')
     text_parts.extend([
         'Recomendamos acessar o link alguns minutos antes do horário agendado.',
         'Caso tente entrar com muita antecedência, talvez seja necessário aguardar o início da reunião ou a liberação pelo organizador.',
-        'Você também receberá os próximos passos pelos canais de contato já informados.',
     ])
-    if client_setup_url:
-        text_parts.extend(['', f'Área do cliente: {client_setup_url}'])
     return EmailContent(subject=subject, html=html, text='\n'.join(text_parts))
 
 
 def build_booking_cancelled_email(*, booking: BookingRequest, cancellation_reason: str | None = None) -> EmailContent:
     context = build_booking_context(booking)
     subject = 'Reunião cancelada | WV Tech Solutions'
-    intro = (
-        f'Olá, {context.recipient_name}. Precisamos informar que a reunião vinculada à sua solicitação foi cancelada pela nossa equipe.'
-    )
+    intro = f'Olá, {context.recipient_name}. Precisamos informar que a reunião vinculada à sua solicitação foi cancelada pela nossa equipe.'
     body_lines = [
         f'Reunião cancelada: {context.booking_label}',
         'Se precisarmos reagendar, faremos um novo contato pelos canais já cadastrados.',
@@ -285,17 +319,13 @@ def build_booking_cancelled_email(*, booking: BookingRequest, cancellation_reaso
 def build_booking_rejected_email(*, booking: BookingRequest) -> EmailContent:
     context = build_booking_context(booking)
     subject = 'Atualização da sua solicitação | WV Tech Solutions'
-    intro = (
-        f'Olá, {context.recipient_name}. Concluímos a análise da sua solicitação e, neste momento, não conseguiremos prosseguir com o agendamento solicitado.'
-    )
+    intro = f'Olá, {context.recipient_name}. Concluímos a análise da sua solicitação e, neste momento, não conseguiremos prosseguir com o agendamento solicitado.'
     body_lines = [
         f'Solicitação analisada: {context.booking_label}',
     ]
     if booking.rejection_reason:
         body_lines.append(f'Motivo informado: {booking.rejection_reason}')
-    body_lines.append(
-        'Agradecemos pelo seu contato. Se houver nova disponibilidade ou necessidade de reabertura do atendimento, retornaremos pelos canais registrados.'
-    )
+    body_lines.append('Agradecemos pelo seu contato. Se houver nova disponibilidade ou necessidade de reabertura do atendimento, retornaremos pelos canais registrados.')
     html = _render_html_shell(
         title='Solicitação analisada',
         eyebrow='WV Tech Solutions',
@@ -315,3 +345,28 @@ def build_booking_rejected_email(*, booking: BookingRequest) -> EmailContent:
         'Agradecemos pelo seu contato. Se houver nova disponibilidade ou necessidade de reabertura do atendimento, retornaremos pelos canais registrados.',
     ])
     return EmailContent(subject=subject, html=html, text='\n'.join(text_parts))
+
+
+def build_client_password_reset_email(*, recipient_name: str, reset_url: str) -> EmailContent:
+    subject = 'Redefinição de senha | Área do cliente WV Tech Solutions'
+    intro = f'Olá, {recipient_name}. Recebemos um pedido para redefinir a senha da sua área do cliente.'
+    body_lines = [
+        'Use o botão abaixo para criar uma nova senha e retomar o acesso ao seu portal.',
+        'Se você não reconhece esta solicitação, basta desconsiderar esta mensagem. A sua senha atual continuará válida até que a alteração seja concluída.',
+    ]
+    html = _render_html_shell(
+        title='Redefinição de senha',
+        eyebrow='Área do cliente',
+        intro=intro,
+        body_lines=body_lines,
+        cta_label='Criar nova senha',
+        cta_url=reset_url,
+        cta_hint='Por segurança, este link tem validade limitada e pode ser usado apenas uma vez.',
+    )
+    text = (
+        f'Olá, {recipient_name}.\n\n'
+        'Recebemos um pedido para redefinir a senha da sua área do cliente.\n'
+        f'Crie sua nova senha neste link: {reset_url}\n\n'
+        'Se você não reconhece esta solicitação, basta desconsiderar esta mensagem.'
+    )
+    return EmailContent(subject=subject, html=html, text=text)

@@ -28,6 +28,30 @@ class ClientWorkspace(Base):
         index=True,
     )
     portal_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    drive_sync_status: Mapped[str] = mapped_column(
+        String(40),
+        nullable=False,
+        default='pending_configuration',
+        server_default='pending_configuration',
+        index=True,
+    )
+    drive_sync_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    drive_synced_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    drive_root_folder_id: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
+    drive_root_folder_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    drive_root_folder_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    drive_meet_artifacts_folder_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    drive_meet_artifacts_folder_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    drive_meet_artifacts_folder_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    drive_client_uploads_folder_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    drive_client_uploads_folder_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    drive_client_uploads_folder_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    drive_generated_documents_folder_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    drive_generated_documents_folder_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    drive_generated_documents_folder_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    drive_archive_folder_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    drive_archive_folder_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    drive_archive_folder_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
     activated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),

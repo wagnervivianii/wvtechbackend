@@ -168,6 +168,10 @@ def _refresh_google_access_token() -> str:
     return access_token
 
 
+def refresh_google_workspace_access_token() -> str:
+    return _refresh_google_access_token()
+
+
 def _extract_meet_url(event_payload: dict) -> str | None:
     hangout_link = event_payload.get('hangoutLink')
     if isinstance(hangout_link, str) and hangout_link.strip():

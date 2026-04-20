@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+from datetime import datetime
+from typing import Any
+
 from pydantic import BaseModel, ConfigDict, Field
 
 
@@ -8,112 +11,238 @@ class AdminClientWorkspaceProvisionRequest(BaseModel):
 
     create_invite: bool = Field(
         True,
-        description="Indica se deve gerar um convite de ativação para o cliente.",
+        description='Indica se deve gerar um convite de ativação para o cliente.',
     )
     invite_ttl_hours: int = Field(
         168,
         ge=1,
         le=720,
-        description="Prazo de expiração do convite, em horas.",
+        description='Prazo de expiração do convite, em horas.',
     )
     portal_notes: str | None = Field(
         None,
         max_length=4000,
-        description="Observações internas para o portal do cliente.",
+        description='Observações internas para o portal do cliente.',
     )
+
+
+class AdminClientWorkspaceInviteRefreshRequest(BaseModel):
+    model_config = ConfigDict(str_strip_whitespace=True)
+
+    invite_ttl_hours: int = Field(
+        168,
+        ge=1,
+        le=720,
+        description='Prazo de expiração do novo convite, em horas.',
+    )
+
+
+class AdminClientWorkspaceArtifactUpsertRequest(BaseModel):
+    model_config = ConfigDict(str_strip_whitespace=True)
+
+    artifact_type: str = Field(..., description='Tipo do artefato: recording, transcript, summary ou notes')
+    artifact_status: str = Field('available', description='Status do artefato: pending, available, failed ou archived')
+    artifact_label: str | None = Field(None, max_length=255, description='Rótulo amigável do artefato')
+    source_provider: str | None = Field(None, max_length=80, description='Origem do artefato, como google_meet')
+    google_conference_record_name: str | None = Field(None, max_length=255, description='Resource name do conference record no Google')
+    google_artifact_resource_name: str | None = Field(None, max_length=255, description='Resource name específico do artefato no Google')
+    source_download_url: str | None = Field(None, max_length=500, description='Link original de origem do artefato')
+    drive_file_id: str | None = Field(None, max_length=255, description='ID do arquivo no Google Drive')
+    drive_file_name: str | None = Field(None, max_length=255, description='Nome do arquivo no Google Drive')
+    drive_web_view_link: str | None = Field(None, max_length=500, description='Link web para visualização do arquivo')
+    mime_type: str | None = Field(None, max_length=120, description='Mime type do arquivo')
+    file_size_bytes: int | None = Field(None, ge=0, description='Tamanho do arquivo em bytes')
+    text_content: str | None = Field(None, description='Conteúdo textual completo do artefato')
+    summary_text: str | None = Field(None, description='Resumo textual do artefato')
+    metadata_json: dict[str, Any] | list[Any] | None = Field(
+        None,
+        description='Metadados complementares serializáveis em JSON',
+    )
+    captured_at: datetime | None = Field(None, description='Momento em que o artefato foi capturado')
+    is_visible_to_client: bool = Field(True, description='Define se o artefato fica visível no portal do cliente')
+
+
+class AdminClientWorkspaceDriveFolderItem(BaseModel):
+    folder_id: str = Field(..., description='Identificador da pasta no Google Drive')
+    folder_name: str = Field(..., description='Nome visível da pasta')
+    web_view_link: str | None = Field(None, description='Link web da pasta no Google Drive')
+
+
+class AdminClientWorkspaceDriveInfo(BaseModel):
+    sync_status: str = Field(..., description='Status da sincronização da estrutura no Drive')
+    sync_error: str | None = Field(None, description='Último erro de sincronização registrado')
+    synced_at: str | None = Field(None, description='Momento da última sincronização bem-sucedida')
+    root: AdminClientWorkspaceDriveFolderItem | None = Field(None, description='Pasta raiz do cliente')
+    meet_artifacts: AdminClientWorkspaceDriveFolderItem | None = Field(
+        None,
+        description='Subpasta destinada aos artefatos do Meet',
+    )
+    client_uploads: AdminClientWorkspaceDriveFolderItem | None = Field(
+        None,
+        description='Subpasta destinada aos uploads do cliente',
+    )
+    generated_documents: AdminClientWorkspaceDriveFolderItem | None = Field(
+        None,
+        description='Subpasta destinada aos documentos gerados pelo sistema',
+    )
+    archive: AdminClientWorkspaceDriveFolderItem | None = Field(
+        None,
+        description='Subpasta reservada para arquivamento do workspace',
+    )
+
+
+class AdminClientWorkspaceMeetingArtifactItem(BaseModel):
+    id: int = Field(..., description='Identificador interno do artefato')
+    artifact_type: str = Field(..., description='Tipo do artefato persistido')
+    artifact_status: str = Field(..., description='Status operacional do artefato')
+    artifact_label: str | None = Field(None, description='Rótulo amigável do artefato')
+    source_provider: str | None = Field(None, description='Origem do artefato')
+    google_conference_record_name: str | None = Field(None, description='Resource name do conference record')
+    google_artifact_resource_name: str | None = Field(None, description='Resource name específico do artefato')
+    source_download_url: str | None = Field(None, description='Link original do artefato')
+    drive_file_id: str | None = Field(None, description='ID do arquivo no Google Drive')
+    drive_file_name: str | None = Field(None, description='Nome do arquivo no Google Drive')
+    drive_web_view_link: str | None = Field(None, description='Link de visualização do arquivo no Google Drive')
+    mime_type: str | None = Field(None, description='Mime type do arquivo')
+    file_size_bytes: int | None = Field(None, description='Tamanho do arquivo em bytes')
+    text_content: str | None = Field(None, description='Conteúdo textual completo')
+    summary_text: str | None = Field(None, description='Resumo textual do artefato')
+    metadata_json: dict[str, Any] | list[Any] | None = Field(None, description='Metadados complementares')
+    captured_at: str | None = Field(None, description='Momento da captura do artefato')
+    last_synced_at: str | None = Field(None, description='Momento da última sincronização do artefato')
+    is_visible_to_client: bool = Field(..., description='Se o artefato aparece para o cliente')
+    created_at: str = Field(..., description='Data de criação do artefato')
+    updated_at: str = Field(..., description='Data da última atualização do artefato')
 
 
 class AdminClientWorkspaceMeetingItem(BaseModel):
-    id: int = Field(..., description="Identificador interno da reunião no workspace")
-    booking_request_id: int = Field(..., description="Solicitação original vinculada")
-    meeting_label: str = Field(..., description="Rótulo consolidado da reunião")
-    meet_url: str | None = Field(None, description="Link do Google Meet")
-    recording_url: str | None = Field(None, description="Link externo da gravação")
-    recording_provider: str | None = Field(None, description="Provedor da gravação")
-    has_transcript: bool = Field(..., description="Indica se existe transcrição")
-    transcript_summary: str | None = Field(None, description="Resumo da transcrição")
-    meeting_notes: str | None = Field(None, description="Observações da reunião")
+    id: int = Field(..., description='Identificador interno da reunião no workspace')
+    booking_request_id: int = Field(..., description='Solicitação original vinculada')
+    meeting_label: str = Field(..., description='Rótulo consolidado da reunião')
+    meet_url: str | None = Field(None, description='Link do Google Meet')
+    recording_url: str | None = Field(None, description='Link externo da gravação')
+    recording_provider: str | None = Field(None, description='Provedor da gravação')
+    has_transcript: bool = Field(..., description='Indica se existe transcrição')
+    transcript_summary: str | None = Field(None, description='Resumo da transcrição')
+    transcript_text: str | None = Field(None, description='Transcrição completa da reunião')
+    meeting_notes: str | None = Field(None, description='Observações da reunião')
+    meeting_started_at: str | None = Field(None, description='Início registrado da reunião')
+    meeting_ended_at: str | None = Field(None, description='Fim registrado da reunião')
     is_visible_to_client: bool = Field(
         ...,
-        description="Indica se a reunião está visível ao cliente no portal",
+        description='Indica se a reunião está visível ao cliente no portal',
     )
     synced_from_booking_at: str | None = Field(
         None,
-        description="Momento da última sincronização a partir do booking",
+        description='Momento da última sincronização a partir do booking',
+    )
+    artifacts: list[AdminClientWorkspaceMeetingArtifactItem] = Field(
+        default_factory=list,
+        description='Artefatos persistidos e vinculados a esta reunião',
     )
 
 
 class AdminClientWorkspaceInviteItem(BaseModel):
-    id: int = Field(..., description="Identificador interno do convite")
-    invite_email: str = Field(..., description="Email para o qual o convite foi emitido")
-    invite_status: str = Field(..., description="Status atual do convite")
-    expires_at: str | None = Field(None, description="Data de expiração do convite")
-    sent_at: str | None = Field(None, description="Data de envio do convite")
-    accepted_at: str | None = Field(None, description="Data de aceite do convite")
-    created_at: str = Field(..., description="Data de criação do convite")
+    id: int = Field(..., description='Identificador interno do convite')
+    invite_email: str = Field(..., description='Email para o qual o convite foi emitido')
+    invite_status: str = Field(..., description='Status atual do convite')
+    expires_at: str | None = Field(None, description='Data de expiração do convite')
+    sent_at: str | None = Field(None, description='Data de envio do convite')
+    accepted_at: str | None = Field(None, description='Data de aceite do convite')
+    created_at: str = Field(..., description='Data de criação do convite')
+
+
+class AdminClientWorkspaceAccountItem(BaseModel):
+    id: int = Field(..., description='Identificador interno da conta do cliente')
+    email: str = Field(..., description='E-mail de autenticação do cliente')
+    full_name: str | None = Field(None, description='Nome principal da conta')
+    has_password: bool = Field(..., description='Indica se existe senha definida')
+    google_linked: bool = Field(..., description='Indica se existe vínculo com Google')
+    auth_provider: str = Field(..., description='Resumo do provedor de autenticação')
+    google_picture_url: str | None = Field(None, description='Avatar retornado pelo Google')
+    last_login_at: str | None = Field(None, description='Último acesso autenticado do cliente')
+    created_at: str = Field(..., description='Data de criação da conta')
 
 
 class AdminClientWorkspaceSummaryItem(BaseModel):
-    workspace_id: int = Field(..., description="Identificador interno do workspace")
-    workspace_status: str = Field(..., description="Status atual do workspace")
-    source_booking_request_id: int | None = Field(None, description="Solicitação de origem")
-    source_booking_status: str = Field(..., description="Status atual do booking de origem")
-    source_meeting_status: str = Field(..., description="Status da reunião de origem")
-    primary_contact_name: str = Field(..., description="Nome do contato principal")
-    primary_contact_email: str = Field(..., description="Email do contato principal")
-    primary_contact_phone: str = Field(..., description="Telefone do contato principal")
-    portal_notes: str | None = Field(None, description="Observações internas do portal")
-    activated_at: str | None = Field(None, description="Data de ativação do portal")
-    created_at: str = Field(..., description="Data de criação do workspace")
-    has_client_access: bool = Field(..., description="Indica se o cliente já acessou o portal")
-    latest_invite_status: str | None = Field(None, description="Status do convite mais recente")
-    latest_invite_sent_at: str | None = Field(None, description="Data de envio do convite mais recente")
-    latest_invite_accepted_at: str | None = Field(None, description="Data de aceite do convite mais recente")
-    meetings_count: int = Field(..., description="Quantidade total de reuniões vinculadas")
-    visible_meetings_count: int = Field(..., description="Quantidade de reuniões visíveis ao cliente")
+    workspace_id: int = Field(..., description='Identificador interno do workspace')
+    workspace_status: str = Field(..., description='Status atual do workspace')
+    source_booking_request_id: int | None = Field(None, description='Solicitação de origem')
+    source_booking_status: str = Field(..., description='Status atual do booking de origem')
+    source_meeting_status: str = Field(..., description='Status da reunião de origem')
+    primary_contact_name: str = Field(..., description='Nome do contato principal')
+    primary_contact_email: str = Field(..., description='Email do contato principal')
+    primary_contact_phone: str = Field(..., description='Telefone do contato principal')
+    portal_notes: str | None = Field(None, description='Observações internas do portal')
+    activated_at: str | None = Field(None, description='Data de ativação do portal')
+    created_at: str = Field(..., description='Data de criação do workspace')
+    has_client_access: bool = Field(..., description='Indica se o cliente já acessou o portal')
+    latest_invite_status: str | None = Field(None, description='Status do convite mais recente')
+    latest_invite_sent_at: str | None = Field(None, description='Data de envio do convite mais recente')
+    latest_invite_accepted_at: str | None = Field(None, description='Data de aceite do convite mais recente')
+    meetings_count: int = Field(..., description='Quantidade total de reuniões vinculadas')
+    visible_meetings_count: int = Field(..., description='Quantidade de reuniões visíveis ao cliente')
     latest_meeting: AdminClientWorkspaceMeetingItem | None = Field(
         None,
-        description="Reunião mais recente vinculada ao workspace",
+        description='Reunião mais recente vinculada ao workspace',
     )
-    invites: list[AdminClientWorkspaceInviteItem] = Field(..., description="Convites emitidos")
-    meetings: list[AdminClientWorkspaceMeetingItem] = Field(..., description="Reuniões vinculadas")
+    account: AdminClientWorkspaceAccountItem | None = Field(
+        None,
+        description='Conta do cliente associada ao workspace',
+    )
+    invites: list[AdminClientWorkspaceInviteItem] = Field(..., description='Convites emitidos')
+    meetings: list[AdminClientWorkspaceMeetingItem] = Field(..., description='Reuniões vinculadas')
+    drive: AdminClientWorkspaceDriveInfo = Field(..., description='Estrutura Google Drive vinculada ao workspace')
 
 
 class AdminClientWorkspaceListResponse(BaseModel):
     items: list[AdminClientWorkspaceSummaryItem] = Field(
         ...,
-        description="Lista consolidada de workspaces do cliente",
+        description='Lista consolidada de workspaces do cliente',
+    )
+
+
+class AdminClientWorkspaceArtifactsResponse(BaseModel):
+    workspace_id: int = Field(..., description='Identificador interno do workspace')
+    primary_contact_name: str = Field(..., description='Nome do contato principal do workspace')
+    primary_contact_email: str = Field(..., description='Email do contato principal do workspace')
+    meetings: list[AdminClientWorkspaceMeetingItem] = Field(
+        ...,
+        description='Reuniões do workspace com seus artefatos persistidos',
     )
 
 
 class AdminClientWorkspaceDetailResponse(BaseModel):
-    workspace_id: int = Field(..., description="Identificador interno do workspace")
-    workspace_status: str = Field(..., description="Status atual do workspace")
+    workspace_id: int = Field(..., description='Identificador interno do workspace')
+    workspace_status: str = Field(..., description='Status atual do workspace')
     source_booking_request_id: int | None = Field(
         None,
-        description="Solicitação de origem que deu base ao workspace",
+        description='Solicitação de origem que deu base ao workspace',
     )
-    source_booking_status: str = Field(..., description="Status operacional do booking")
-    source_meeting_status: str = Field(..., description="Status da reunião de origem")
-    primary_contact_name: str = Field(..., description="Nome do contato principal")
-    primary_contact_email: str = Field(..., description="Email do contato principal")
-    primary_contact_phone: str = Field(..., description="Telefone do contato principal")
-    portal_notes: str | None = Field(None, description="Observações internas do portal")
-    activated_at: str | None = Field(None, description="Data de ativação do portal")
-    created_at: str = Field(..., description="Data de criação do workspace")
-    meetings: list[AdminClientWorkspaceMeetingItem] = Field(
-        ...,
-        description="Reuniões vinculadas ao workspace",
+    source_booking_status: str = Field(..., description='Status operacional do booking')
+    source_meeting_status: str = Field(..., description='Status da reunião vinculada')
+    primary_contact_name: str = Field(..., description='Nome do contato principal')
+    primary_contact_email: str = Field(..., description='Email do contato principal')
+    primary_contact_phone: str = Field(..., description='Telefone do contato principal')
+    portal_notes: str | None = Field(None, description='Observações internas do portal')
+    activated_at: str | None = Field(None, description='Data de ativação do workspace')
+    created_at: str = Field(..., description='Data de criação do workspace')
+    account: AdminClientWorkspaceAccountItem | None = Field(
+        None,
+        description='Conta do cliente associada ao workspace',
     )
-    invites: list[AdminClientWorkspaceInviteItem] = Field(
-        ...,
-        description="Convites emitidos para ativação do workspace",
-    )
+    meetings: list[AdminClientWorkspaceMeetingItem] = Field(..., description='Reuniões vinculadas')
+    invites: list[AdminClientWorkspaceInviteItem] = Field(..., description='Convites emitidos para acesso')
+    drive: AdminClientWorkspaceDriveInfo = Field(..., description='Estrutura Google Drive vinculada ao workspace')
     setup_token: str | None = Field(
         None,
-        description="Token bruto gerado para ativação inicial, quando aplicável",
+        description='Token bruto de ativação retornado apenas após gerar um novo acesso',
     )
     setup_path: str | None = Field(
         None,
-        description="Caminho previsto para ativação do portal do cliente",
+        description='Caminho relativo do primeiro acesso do cliente',
+    )
+    setup_url: str | None = Field(
+        None,
+        description='URL absoluta de primeiro acesso do cliente',
     )
