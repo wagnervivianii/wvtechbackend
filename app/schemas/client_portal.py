@@ -44,3 +44,29 @@ class ClientPortalWorkspaceResponse(BaseModel):
     activated_at: str | None
     created_at: str
     meetings: list[ClientPortalMeetingItem]
+
+
+
+class ClientPortalWorkspaceFileItem(BaseModel):
+    id: int
+    meeting_id: int | None
+    file_category: str
+    display_name: str | None
+    description: str | None
+    drive_file_name: str | None
+    drive_web_view_link: str | None
+    mime_type: str | None
+    file_extension: str | None
+    file_size_bytes: int | None
+    created_at: str
+
+
+class ClientPortalWorkspaceFilesResponse(BaseModel):
+    workspace_id: int
+    items: list[ClientPortalWorkspaceFileItem]
+
+
+class ClientPortalWorkspaceFileUploadResponse(BaseModel):
+    message: str
+    review_status: str
+    item: ClientPortalWorkspaceFileItem

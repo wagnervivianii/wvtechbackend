@@ -294,3 +294,44 @@ class AdminClientWorkspaceDetailResponse(BaseModel):
         None,
         description='URL absoluta de primeiro acesso do cliente',
     )
+
+
+class AdminClientWorkspaceFileItem(BaseModel):
+    id: int
+    workspace_id: int
+    meeting_id: int | None
+    uploaded_by_role: str
+    file_category: str
+    review_status: str
+    visibility_scope: str
+    display_name: str | None
+    description: str | None
+    drive_file_id: str
+    drive_file_name: str | None
+    drive_web_view_link: str | None
+    mime_type: str | None
+    file_extension: str | None
+    file_size_bytes: int | None
+    review_notes: str | None
+    approved_at: str | None
+    reviewed_at: str | None
+    archived_at: str | None
+    deleted_at: str | None
+    created_at: str
+    updated_at: str
+
+
+class AdminClientWorkspaceFileListResponse(BaseModel):
+    workspace_id: int
+    pending_review_count: int
+    approved_count: int
+    archived_count: int
+    rejected_count: int
+    items: list[AdminClientWorkspaceFileItem]
+
+
+class AdminClientWorkspaceFileActionRequest(BaseModel):
+    model_config = ConfigDict(str_strip_whitespace=True)
+
+    review_notes: str | None = Field(None, max_length=4000)
+    visible_to_client: bool = Field(True)

@@ -23,6 +23,7 @@ from app.models.client_workspace_invite import ClientWorkspaceInvite  # noqa: F4
 from app.models.client_workspace_meeting import ClientWorkspaceMeeting  # noqa: F401
 from app.models.client_workspace_meeting_artifact import ClientWorkspaceMeetingArtifact  # noqa: F401
 from app.models.client_workspace_password_reset_token import ClientWorkspacePasswordResetToken  # noqa: F401
+from app.models.client_workspace_file import ClientWorkspaceFile  # noqa: F401
 
 config = context.config
 

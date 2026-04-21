@@ -2,8 +2,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import json
+import mimetypes
+import os
 import re
 import unicodedata
+import uuid
 from urllib import error, parse, request
 
 from app.core.config import settings
@@ -406,3 +409,82 @@ def ensure_client_workspace_drive_folders(
         generated_documents=generated_documents,
         archive=archive,
     )
+
+
+def _build_multipart_related_body(*, metadata: dict, file_bytes: bytes, mime_type: str) -> tuple[bytes, str]:
+    boundary = f"===============wvtech-{uuid.uuid4().hex}=="
+    part1 = (
+        f"--{boundary}\r\n"
+        "Content-Type: application/json; charset=UTF-8\r\n\r\n"
+    ).encode("utf-8") + json.dumps(metadata).encode("utf-8") + b"\r\n"
+    part2 = (
+        f"--{boundary}\r\n"
+        f"Content-Type: {mime_type}\r\n\r\n"
+    ).encode("utf-8") + file_bytes + b"\r\n"
+    closing = f"--{boundary}--\r\n".encode("utf-8")
+    return part1 + part2 + closing, boundary
+
+
+def upload_bytes_to_google_drive_folder(
+    *,
+    folder_id: str,
+    file_name: str,
+    file_bytes: bytes,
+    mime_type: str | None = None,
+) -> GoogleDriveFileRef:
+    _ensure_google_drive_credentials_configured()
+    if not file_bytes:
+        raise GoogleDriveIntegrationError('O arquivo enviado está vazio.')
+
+    effective_mime_type = mime_type or mimetypes.guess_type(file_name)[0] or 'application/octet-stream'
+    access_token = _get_google_drive_access_token()
+    metadata = {
+        'name': file_name,
+        'parents': [folder_id],
+    }
+    body, boundary = _build_multipart_related_body(
+        metadata=metadata,
+        file_bytes=file_bytes,
+        mime_type=effective_mime_type,
+    )
+
+    req = request.Request(
+        url=f'https://www.googleapis.com/upload/drive/v3/files?{parse.urlencode({"uploadType": "multipart", "supportsAllDrives": "true", "fields": "id,name,webViewLink,mimeType,size,parents"})}',
+        data=body,
+        headers={
+            'Authorization': f'Bearer {access_token}',
+            'Accept': 'application/json',
+            'Content-Type': f'multipart/related; boundary={boundary}',
+            'Content-Length': str(len(body)),
+        },
+        method='POST',
+    )
+    try:
+        with request.urlopen(req, timeout=60) as response:
+            raw = response.read().decode('utf-8')
+    except error.HTTPError as exc:
+        raw = exc.read().decode('utf-8', errors='replace')
+        raise GoogleDriveIntegrationError(
+            f'Google Drive retornou erro {exc.code} ao enviar o arquivo: {raw or exc.reason}'
+        ) from exc
+    except error.URLError as exc:
+        raise GoogleDriveIntegrationError(
+            f'Não foi possível comunicar com a Google Drive API para enviar o arquivo: {exc.reason}'
+        ) from exc
+
+    try:
+        payload = json.loads(raw) if raw else {}
+    except json.JSONDecodeError:
+        payload = {}
+    return _serialize_drive_file(payload)
+
+
+def trash_google_drive_file(*, file_id: str) -> GoogleDriveFileRef:
+    access_token = _get_google_drive_access_token()
+    payload = _http_json_request(
+        url=f"{DRIVE_API_BASE}/files/{parse.quote(file_id, safe='')}?{parse.urlencode({'supportsAllDrives': 'true', 'fields': 'id,name,webViewLink,mimeType,size,parents'})}",
+        method='PATCH',
+        headers={'Authorization': f'Bearer {access_token}'},
+        payload={'trashed': True},
+    )
+    return _serialize_drive_file(payload, fallback_id=file_id)

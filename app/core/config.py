@@ -161,6 +161,10 @@ class Settings:
         True,
     )
 
+    google_drive_direct_upload_max_bytes: int = int(
+        os.getenv('GOOGLE_DRIVE_DIRECT_UPLOAD_MAX_BYTES', str(25 * 1024 * 1024))
+    )
+
     client_google_oauth_client_id: str = os.getenv(
         'CLIENT_GOOGLE_OAUTH_CLIENT_ID',
         os.getenv('GOOGLE_OAUTH_CLIENT_ID', ''),

@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, File, Form, UploadFile
 from sqlalchemy.orm import Session
 
 from app.core.security import require_admin_auth
@@ -7,6 +7,9 @@ from app.schemas.admin_client_workspaces import (
     AdminClientWorkspaceArtifactUpsertRequest,
     AdminClientWorkspaceArtifactsResponse,
     AdminClientWorkspaceDetailResponse,
+    AdminClientWorkspaceFileActionRequest,
+    AdminClientWorkspaceFileItem,
+    AdminClientWorkspaceFileListResponse,
     AdminClientWorkspaceMeetingArtifactBatchSyncRequest,
     AdminClientWorkspaceMeetingArtifactBatchSyncResponse,
     AdminClientWorkspaceInviteRefreshRequest,
@@ -27,6 +30,15 @@ from app.services.client_workspace_artifacts import (
     sync_workspace_meeting_artifacts_from_google,
     sync_workspace_pending_google_artifacts,
     upsert_workspace_meeting_artifact,
+)
+from app.services.client_workspace_files import (
+    admin_upload_workspace_file,
+    approve_workspace_file,
+    archive_workspace_file,
+    delete_workspace_file,
+    list_admin_workspace_files,
+    read_upload_file,
+    reject_workspace_file,
 )
 
 router = APIRouter(
@@ -159,3 +171,77 @@ def post_admin_client_workspace_pending_google_artifacts_sync(
         workspace_id=workspace_id,
         payload=payload,
     )
+
+
+@router.get("/client-workspaces/{workspace_id}/files", response_model=AdminClientWorkspaceFileListResponse)
+def get_admin_client_workspace_files(
+    workspace_id: int,
+    db: Session = Depends(get_db),
+) -> AdminClientWorkspaceFileListResponse:
+    return list_admin_workspace_files(db=db, workspace_id=workspace_id)
+
+
+@router.post("/client-workspaces/{workspace_id}/files/admin-upload", response_model=AdminClientWorkspaceFileItem)
+async def post_admin_client_workspace_file_upload(
+    workspace_id: int,
+    file: UploadFile = File(...),
+    meeting_id: int | None = Form(None),
+    display_name: str | None = Form(None),
+    description: str | None = Form(None),
+    file_category: str = Form('generated_document'),
+    target_bucket: str = Form('generated_documents'),
+    visible_to_client: bool = Form(True),
+    db: Session = Depends(get_db),
+) -> AdminClientWorkspaceFileItem:
+    prepared = await read_upload_file(file)
+    return admin_upload_workspace_file(
+        db=db,
+        workspace_id=workspace_id,
+        upload=prepared,
+        meeting_id=meeting_id,
+        display_name=display_name,
+        description=description,
+        file_category=file_category,
+        target_bucket=target_bucket,
+        visible_to_client=visible_to_client,
+    )
+
+
+@router.post("/client-workspaces/{workspace_id}/files/{file_id}/approve", response_model=AdminClientWorkspaceFileItem)
+def post_admin_client_workspace_file_approve(
+    workspace_id: int,
+    file_id: int,
+    payload: AdminClientWorkspaceFileActionRequest,
+    db: Session = Depends(get_db),
+) -> AdminClientWorkspaceFileItem:
+    return approve_workspace_file(db=db, workspace_id=workspace_id, file_id=file_id, payload=payload)
+
+
+@router.post("/client-workspaces/{workspace_id}/files/{file_id}/reject", response_model=AdminClientWorkspaceFileItem)
+def post_admin_client_workspace_file_reject(
+    workspace_id: int,
+    file_id: int,
+    payload: AdminClientWorkspaceFileActionRequest,
+    db: Session = Depends(get_db),
+) -> AdminClientWorkspaceFileItem:
+    return reject_workspace_file(db=db, workspace_id=workspace_id, file_id=file_id, payload=payload)
+
+
+@router.post("/client-workspaces/{workspace_id}/files/{file_id}/archive", response_model=AdminClientWorkspaceFileItem)
+def post_admin_client_workspace_file_archive(
+    workspace_id: int,
+    file_id: int,
+    payload: AdminClientWorkspaceFileActionRequest,
+    db: Session = Depends(get_db),
+) -> AdminClientWorkspaceFileItem:
+    return archive_workspace_file(db=db, workspace_id=workspace_id, file_id=file_id, payload=payload)
+
+
+@router.post("/client-workspaces/{workspace_id}/files/{file_id}/delete", response_model=AdminClientWorkspaceFileItem)
+def delete_admin_client_workspace_file(
+    workspace_id: int,
+    file_id: int,
+    payload: AdminClientWorkspaceFileActionRequest,
+    db: Session = Depends(get_db),
+) -> AdminClientWorkspaceFileItem:
+    return delete_workspace_file(db=db, workspace_id=workspace_id, file_id=file_id, payload=payload)
