@@ -9,6 +9,7 @@ from app.api.routes.bookings import router as bookings_router
 from app.api.routes.client_auth import router as client_auth_router
 from app.api.routes.client_portal import router as client_portal_router
 from app.api.routes.health import router as health_router
+from app.api.routes.whatsapp_webhook import router as whatsapp_webhook_router
 from app.core.config import settings
 
 app = FastAPI(
@@ -27,3 +28,4 @@ app.include_router(admin_bookings_router)
 app.include_router(admin_client_workspaces_router)
 app.include_router(client_auth_router)
 app.include_router(client_portal_router)
+app.include_router(whatsapp_webhook_router)

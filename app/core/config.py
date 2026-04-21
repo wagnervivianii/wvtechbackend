@@ -198,5 +198,33 @@ class Settings:
     email_signature_name: str = os.getenv('EMAIL_SIGNATURE_NAME', 'Wagner Viviani').strip() or 'Wagner Viviani'
     email_signature_phone: str = os.getenv('EMAIL_SIGNATURE_PHONE', '11 99688-4509').strip() or '11 99688-4509'
 
+    meta_whatsapp_enabled: bool = _get_bool('META_WHATSAPP_ENABLED', False)
+    meta_whatsapp_dry_run: bool = _get_bool('META_WHATSAPP_DRY_RUN', True)
+    meta_whatsapp_api_base_url: str = os.getenv(
+        'META_WHATSAPP_API_BASE_URL',
+        'https://graph.facebook.com',
+    ).strip().rstrip('/') or 'https://graph.facebook.com'
+    meta_whatsapp_api_version: str = os.getenv(
+        'META_WHATSAPP_API_VERSION',
+        'v23.0',
+    ).strip().strip('/') or 'v23.0'
+    meta_whatsapp_access_token: str = os.getenv('META_WHATSAPP_ACCESS_TOKEN', '').strip()
+    meta_whatsapp_phone_number_id: str = os.getenv('META_WHATSAPP_PHONE_NUMBER_ID', '').strip()
+    meta_whatsapp_business_account_id: str = os.getenv(
+        'META_WHATSAPP_BUSINESS_ACCOUNT_ID',
+        '',
+    ).strip()
+    meta_whatsapp_webhook_verify_token: str = os.getenv(
+        'META_WHATSAPP_WEBHOOK_VERIFY_TOKEN',
+        '',
+    ).strip()
+    meta_whatsapp_default_language_code: str = os.getenv(
+        'META_WHATSAPP_DEFAULT_LANGUAGE_CODE',
+        'pt_BR',
+    ).strip() or 'pt_BR'
+    meta_whatsapp_request_timeout_seconds: float = float(
+        os.getenv('META_WHATSAPP_REQUEST_TIMEOUT_SECONDS', '20')
+    )
+
 
 settings = Settings()
