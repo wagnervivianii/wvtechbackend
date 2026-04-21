@@ -1,13 +1,18 @@
 from dataclasses import dataclass, field
-from enum import StrEnum
+from enum import Enum
 
 
-class WhatsAppMessageDirection(StrEnum):
+class StringEnum(str, Enum):
+    def __str__(self) -> str:
+        return str(self.value)
+
+
+class WhatsAppMessageDirection(StringEnum):
     INBOUND = 'inbound'
     OUTBOUND = 'outbound'
 
 
-class WhatsAppEventKind(StrEnum):
+class WhatsAppEventKind(StringEnum):
     MESSAGE = 'message'
     STATUS = 'status'
     UNKNOWN = 'unknown'
