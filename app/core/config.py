@@ -222,6 +222,18 @@ class Settings:
         'META_WHATSAPP_DEFAULT_LANGUAGE_CODE',
         'pt_BR',
     ).strip() or 'pt_BR'
+    meta_whatsapp_template_booking_confirmed: str = os.getenv(
+        'META_WHATSAPP_TEMPLATE_BOOKING_CONFIRMED',
+        'wv_confirmacao_reuniao',
+    ).strip() or 'wv_confirmacao_reuniao'
+    meta_whatsapp_template_booking_reminder_1d: str = os.getenv(
+        'META_WHATSAPP_TEMPLATE_BOOKING_REMINDER_1D',
+        'wv_lembrete_reuniao_1_dia',
+    ).strip() or 'wv_lembrete_reuniao_1_dia'
+    meta_whatsapp_template_booking_reminder_15m: str = os.getenv(
+        'META_WHATSAPP_TEMPLATE_BOOKING_REMINDER_15M',
+        'wv_lembrete_reuniao_15_min',
+    ).strip() or 'wv_lembrete_reuniao_15_min'
     meta_whatsapp_request_timeout_seconds: float = float(
         os.getenv('META_WHATSAPP_REQUEST_TIMEOUT_SECONDS', '20')
     )

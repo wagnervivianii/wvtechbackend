@@ -11,12 +11,18 @@ from app.schemas.admin_bookings import (
     AdminBookingRebookingPermissionRequest,
     AdminBookingRebookingPermissionResponse,
     AdminBookingRejectionRequest,
+    AdminBookingWhatsAppReminderDispatchRequest,
+    AdminBookingWhatsAppReminderDispatchResponse,
+    AdminBookingWhatsAppSendResponse,
 )
 from app.services.admin_bookings import (
     approve_booking_request,
     cancel_booking_request,
+    get_booking_detail,
     list_pending_admin_review,
+    process_due_whatsapp_reminders,
     reject_booking_request,
+    send_booking_approved_whatsapp_notification,
     update_rebooking_permission,
 )
 
@@ -33,6 +39,40 @@ def get_pending_admin_review(
 ) -> AdminBookingPendingReviewListResponse:
     return list_pending_admin_review(db=db)
 
+
+
+
+@router.get('/{booking_id}', response_model=AdminBookingDecisionResponse)
+def get_booking_decision_detail(
+    booking_id: int,
+    db: Session = Depends(get_db),
+) -> AdminBookingDecisionResponse:
+    return get_booking_detail(
+        db=db,
+        booking_id=booking_id,
+    )
+
+
+@router.post('/{booking_id}/whatsapp/send-approved', response_model=AdminBookingWhatsAppSendResponse)
+def post_booking_whatsapp_send_approved(
+    booking_id: int,
+    db: Session = Depends(get_db),
+) -> AdminBookingWhatsAppSendResponse:
+    return send_booking_approved_whatsapp_notification(
+        db=db,
+        booking_id=booking_id,
+    )
+
+
+@router.post('/whatsapp/process-reminders', response_model=AdminBookingWhatsAppReminderDispatchResponse)
+def post_process_due_whatsapp_reminders(
+    payload: AdminBookingWhatsAppReminderDispatchRequest,
+    db: Session = Depends(get_db),
+) -> AdminBookingWhatsAppReminderDispatchResponse:
+    return process_due_whatsapp_reminders(
+        db=db,
+        payload=payload,
+    )
 
 @router.post("/{booking_id}/approve", response_model=AdminBookingDecisionResponse)
 def post_booking_approval(

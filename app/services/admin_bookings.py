@@ -18,6 +18,9 @@ from app.schemas.admin_bookings import (
     AdminBookingRebookingPermissionRequest,
     AdminBookingRebookingPermissionResponse,
     AdminBookingRejectionRequest,
+    AdminBookingWhatsAppReminderDispatchRequest,
+    AdminBookingWhatsAppReminderDispatchResponse,
+    AdminBookingWhatsAppSendResponse,
 )
 from app.schemas.admin_client_workspaces import AdminClientWorkspaceProvisionRequest
 from app.services.admin_client_workspaces import (
@@ -25,6 +28,7 @@ from app.services.admin_client_workspaces import (
     provision_client_workspace_for_booking,
 )
 from app.services.booking_request_status import REOPENED_BOOKING_REQUEST_STATUSES
+from app.services.booking_whatsapp import BookingWhatsAppService
 from app.services.email_notifications import send_email
 from app.services.email_templates import (
     build_booking_approved_email,
@@ -34,8 +38,8 @@ from app.services.email_templates import (
 )
 from app.services.google_calendar import (
     GoogleCalendarIntegrationError,
-    create_google_meet_event_for_booking,
     cancel_google_event_for_booking,
+    create_google_meet_event_for_booking,
 )
 
 
@@ -47,6 +51,10 @@ PENDING_ADMIN_REVIEW_STATUS = 'email_confirmed_pending_admin_review'
 
 def _now_local() -> datetime:
     return datetime.now(ZoneInfo(settings.app_timezone))
+
+
+def _serialize_dt(value: datetime | None) -> str | None:
+    return value.isoformat() if value else None
 
 
 def _booking_has_already_happened(booking: BookingRequest) -> bool:
@@ -127,6 +135,25 @@ def _google_calendar_cancelled(meeting_notes: str | None) -> bool:
     return '[Google Calendar] Evento cancelado automaticamente.' in meeting_notes
 
 
+
+
+def _coerce_reference_datetime(value: str | None) -> datetime:
+    if not value:
+        return _now_local()
+
+    try:
+        parsed = datetime.fromisoformat(value)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail='reference_datetime inválido. Use ISO-8601, por exemplo 2026-04-23T14:00:00-03:00.',
+        ) from exc
+
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=ZoneInfo(settings.app_timezone))
+    return parsed.astimezone(ZoneInfo(settings.app_timezone))
+
+
 def _serialize_pending_review_item(booking: BookingRequest) -> AdminBookingPendingReviewItem:
     return AdminBookingPendingReviewItem(
         id=booking.id,
@@ -176,17 +203,27 @@ def _serialize_decision_response(
         meet_url=booking.meet_url,
         meet_event_id=booking.meet_event_id,
         meeting_notes=booking.meeting_notes,
-        contact_confirmed_at=(
-            booking.contact_confirmed_at.isoformat() if booking.contact_confirmed_at else None
-        ),
-        admin_reviewed_at=(
-            booking.admin_reviewed_at.isoformat() if booking.admin_reviewed_at else None
-        ),
+        contact_confirmed_at=_serialize_dt(booking.contact_confirmed_at),
+        admin_reviewed_at=_serialize_dt(booking.admin_reviewed_at),
         rejection_reason=booking.rejection_reason,
         cancellation_reason=_extract_cancellation_reason(booking.meeting_notes) if is_admin_cancelled else None,
         cancelled_at=booking.admin_reviewed_at.isoformat() if is_admin_cancelled and booking.admin_reviewed_at else None,
         google_calendar_cancelled=_google_calendar_cancelled(booking.meeting_notes) if is_admin_cancelled else False,
         can_schedule_again=booking.can_schedule_again,
+        whatsapp_opt_in=booking.whatsapp_opt_in,
+        whatsapp_last_template_name=booking.whatsapp_last_template_name,
+        whatsapp_last_message_id=booking.whatsapp_last_message_id,
+        whatsapp_last_sent_at=_serialize_dt(booking.whatsapp_last_sent_at),
+        whatsapp_last_status=booking.whatsapp_last_status,
+        whatsapp_last_error=booking.whatsapp_last_error,
+        whatsapp_last_inbound_text=booking.whatsapp_last_inbound_text,
+        whatsapp_last_inbound_at=_serialize_dt(booking.whatsapp_last_inbound_at),
+        whatsapp_confirmed_at=_serialize_dt(booking.whatsapp_confirmed_at),
+        whatsapp_cancelled_at=_serialize_dt(booking.whatsapp_cancelled_at),
+        whatsapp_reminder_1d_due_at=_serialize_dt(booking.whatsapp_reminder_1d_due_at),
+        whatsapp_reminder_1d_sent_at=_serialize_dt(booking.whatsapp_reminder_1d_sent_at),
+        whatsapp_reminder_15m_due_at=_serialize_dt(booking.whatsapp_reminder_15m_due_at),
+        whatsapp_reminder_15m_sent_at=_serialize_dt(booking.whatsapp_reminder_15m_sent_at),
         client_workspace=_load_workspace_detail_or_none(db, booking.id),
     )
 
@@ -223,6 +260,21 @@ def _send_booking_approved_email_best_effort(
             'Falha ao enviar email de aprovação para booking_id=%s',
             booking.id,
         )
+
+
+def _send_booking_approved_whatsapp_best_effort(*, db: Session, booking: BookingRequest, enabled_by_payload: bool) -> None:
+    if not enabled_by_payload:
+        logger.info('Envio de WhatsApp desabilitado no payload para booking_id=%s', booking.id)
+        return
+
+    try:
+        service = BookingWhatsAppService()
+        service.send_booking_approved_message(booking=booking)
+        db.add(booking)
+        db.commit()
+        db.refresh(booking)
+    except Exception:
+        logger.exception('Falha ao preparar/enviar WhatsApp de aprovação para booking_id=%s', booking.id)
 
 
 def _send_booking_rejected_email_best_effort(*, booking: BookingRequest) -> None:
@@ -292,6 +344,8 @@ def approve_booking_request(
     booking.meet_event_id = meeting.event_id
     booking.meeting_notes = payload.meeting_notes.strip() if payload.meeting_notes else None
 
+    BookingWhatsAppService().prepare_booking_after_approval(booking=booking)
+
     db.add(booking)
     db.commit()
     db.refresh(booking)
@@ -320,6 +374,11 @@ def approve_booking_request(
         booking=booking,
         client_setup_url=client_setup_url,
         invite_id_to_mark=invite_id_to_mark,
+    )
+    _send_booking_approved_whatsapp_best_effort(
+        db=db,
+        booking=booking,
+        enabled_by_payload=payload.send_whatsapp_notification,
     )
 
     return _serialize_decision_response(db, booking)
@@ -445,4 +504,67 @@ def update_rebooking_permission(
         email=booking.email,
         phone=booking.phone,
         can_schedule_again=booking.can_schedule_again,
+    )
+
+
+
+def get_booking_detail(
+    db: Session,
+    *,
+    booking_id: int,
+) -> AdminBookingDecisionResponse:
+    booking = _get_booking_or_404(db, booking_id)
+    return _serialize_decision_response(db, booking)
+
+
+def send_booking_approved_whatsapp_notification(
+    db: Session,
+    *,
+    booking_id: int,
+) -> AdminBookingWhatsAppSendResponse:
+    booking = _get_booking_or_404(db, booking_id)
+
+    if booking.status != 'approved':
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail='Somente reuniões aprovadas podem disparar a notificação de WhatsApp.',
+        )
+
+    if booking.meeting_status != 'scheduled':
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail='Somente reuniões agendadas podem disparar a notificação de WhatsApp.',
+        )
+
+    service = BookingWhatsAppService()
+    service.send_booking_approved_message(booking=booking)
+    db.add(booking)
+    db.commit()
+    db.refresh(booking)
+
+    return AdminBookingWhatsAppSendResponse(
+        booking=_serialize_decision_response(db, booking),
+        channel_enabled=settings.meta_whatsapp_enabled,
+        dry_run=settings.meta_whatsapp_dry_run,
+    )
+
+
+def process_due_whatsapp_reminders(
+    db: Session,
+    *,
+    payload: AdminBookingWhatsAppReminderDispatchRequest,
+) -> AdminBookingWhatsAppReminderDispatchResponse:
+    reference_dt = _coerce_reference_datetime(payload.reference_datetime)
+    processed_booking_ids = BookingWhatsAppService().send_due_reminders(
+        db=db,
+        reference_dt=reference_dt,
+        limit=payload.limit,
+    )
+
+    return AdminBookingWhatsAppReminderDispatchResponse(
+        processed_booking_ids=processed_booking_ids,
+        processed_count=len(processed_booking_ids),
+        reference_datetime=reference_dt.isoformat(),
+        channel_enabled=settings.meta_whatsapp_enabled,
+        dry_run=settings.meta_whatsapp_dry_run,
     )
