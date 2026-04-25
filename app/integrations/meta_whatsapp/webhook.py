@@ -1,5 +1,14 @@
+import hashlib
+import hmac
+
 from app.integrations.meta_whatsapp.exceptions import MetaWhatsAppWebhookVerificationError
+import hashlib
+import hmac
+
 from app.integrations.meta_whatsapp.schemas import WhatsAppWebhookParseResult
+import hashlib
+import hmac
+
 from app.integrations.meta_whatsapp.types import (
     WhatsAppWebhookMessageEvent,
     WhatsAppWebhookStatusEvent,
@@ -18,6 +27,24 @@ class MetaWebhookVerifier:
         if not challenge:
             raise MetaWhatsAppWebhookVerificationError('Challenge do webhook da Meta ausente.')
         return challenge
+
+    @staticmethod
+    def verify_payload_signature(*, raw_body: bytes, signature_header: str | None, app_secret: str) -> None:
+        if not app_secret:
+            return
+
+        if not signature_header or not signature_header.startswith('sha256='):
+            raise MetaWhatsAppWebhookVerificationError('Assinatura do webhook da Meta ausente ou inválida.')
+
+        expected_signature = hmac.new(
+            app_secret.encode('utf-8'),
+            raw_body,
+            hashlib.sha256,
+        ).hexdigest()
+        provided_signature = signature_header.removeprefix('sha256=').strip()
+
+        if not hmac.compare_digest(expected_signature, provided_signature):
+            raise MetaWhatsAppWebhookVerificationError('Assinatura do webhook da Meta não confere.')
 
 
 class MetaWebhookParser:

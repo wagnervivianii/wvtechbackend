@@ -218,6 +218,7 @@ class Settings:
         'META_WHATSAPP_WEBHOOK_VERIFY_TOKEN',
         '',
     ).strip()
+    meta_whatsapp_app_secret: str = os.getenv('META_WHATSAPP_APP_SECRET', '').strip()
     meta_whatsapp_default_language_code: str = os.getenv(
         'META_WHATSAPP_DEFAULT_LANGUAGE_CODE',
         'pt_BR',

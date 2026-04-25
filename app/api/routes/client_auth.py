@@ -1,6 +1,7 @@
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Request
 from sqlalchemy.orm import Session
 
+from app.core.rate_limit import rate_limit_client_auth
 from app.core.security import require_client_auth
 from app.db.session import get_db
 from app.schemas.client_auth import (
@@ -41,32 +42,40 @@ def get_client_invite_preview(
 @router.post('/first-access', response_model=ClientAuthTokenResponse)
 def post_client_first_access(
     payload: ClientFirstAccessRequest,
+    request: Request,
     db: Session = Depends(get_db),
 ) -> ClientAuthTokenResponse:
+    rate_limit_client_auth(request)
     return complete_client_first_access(db, payload)
 
 
 @router.post('/login', response_model=ClientAuthTokenResponse)
 def post_client_login(
     payload: ClientLoginRequest,
+    request: Request,
     db: Session = Depends(get_db),
 ) -> ClientAuthTokenResponse:
+    rate_limit_client_auth(request)
     return authenticate_client_with_password(db, payload)
 
 
 @router.post('/forgot-password', response_model=ClientAuthMessageResponse)
 def post_client_forgot_password(
     payload: ClientForgotPasswordRequest,
+    request: Request,
     db: Session = Depends(get_db),
 ) -> ClientAuthMessageResponse:
+    rate_limit_client_auth(request)
     return request_client_password_reset(db, payload)
 
 
 @router.post('/reset-password', response_model=ClientAuthMessageResponse)
 def post_client_reset_password(
     payload: ClientResetPasswordRequest,
+    request: Request,
     db: Session = Depends(get_db),
 ) -> ClientAuthMessageResponse:
+    rate_limit_client_auth(request)
     return reset_client_password(db, payload)
 
 
@@ -81,8 +90,10 @@ def get_client_google_start(
 @router.post('/google/exchange', response_model=ClientGoogleExchangeResponse)
 def post_client_google_exchange(
     payload: ClientGoogleExchangeRequest,
+    request: Request,
     db: Session = Depends(get_db),
 ) -> ClientGoogleExchangeResponse:
+    rate_limit_client_auth(request)
     return exchange_client_google_auth(db, payload)
 
 

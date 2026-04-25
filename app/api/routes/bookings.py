@@ -1,7 +1,8 @@
-from fastapi import APIRouter, Depends, HTTPException, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session
 
+from app.core.rate_limit import rate_limit_booking_request
 from app.db.session import get_db
 from app.schemas.bookings import BookingRequestCreate, BookingRequestCreated
 from app.services.booking_confirmations import (
@@ -20,8 +21,10 @@ router = APIRouter(
 @router.post("/requests", response_model=BookingRequestCreated)
 def create_booking_request_route(
     payload: BookingRequestCreate,
+    request: Request,
     db: Session = Depends(get_db),
 ) -> BookingRequestCreated:
+    rate_limit_booking_request(request)
     return create_booking_request(db=db, payload=payload)
 
 

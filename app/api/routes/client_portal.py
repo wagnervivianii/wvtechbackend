@@ -1,6 +1,7 @@
-from fastapi import APIRouter, Depends, File, Form, UploadFile
+from fastapi import APIRouter, Depends, File, Form, Request, UploadFile
 from sqlalchemy.orm import Session
 
+from app.core.rate_limit import rate_limit_client_upload
 from app.core.security import require_client_auth
 from app.db.session import get_db
 from app.schemas.client_portal import (
@@ -36,6 +37,7 @@ def get_client_workspace_files(
 
 @router.post('/files/upload', response_model=ClientPortalWorkspaceFileUploadResponse)
 async def post_client_workspace_file_upload(
+    request: Request,
     claims: dict[str, object] = Depends(require_client_auth),
     file: UploadFile = File(...),
     meeting_id: int | None = Form(None),
@@ -43,6 +45,7 @@ async def post_client_workspace_file_upload(
     description: str | None = Form(None),
     db: Session = Depends(get_db),
 ) -> ClientPortalWorkspaceFileUploadResponse:
+    rate_limit_client_upload(request)
     prepared = await read_upload_file(file)
     return client_upload_workspace_file(
         db=db,

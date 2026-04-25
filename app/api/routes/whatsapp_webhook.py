@@ -1,9 +1,11 @@
+import json
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
+from app.core.rate_limit import rate_limit_whatsapp_webhook
 from app.db.session import get_db
 from app.integrations.meta_whatsapp.exceptions import MetaWhatsAppWebhookVerificationError
 from app.integrations.meta_whatsapp.webhook import MetaWebhookParser, MetaWebhookVerifier
@@ -45,7 +47,29 @@ async def receive_whatsapp_webhook(
     request: Request,
     db: Session = Depends(get_db),
 ) -> dict:
-    payload = await request.json()
+    rate_limit_whatsapp_webhook(request)
+    raw_body = await request.body()
+
+    try:
+        MetaWebhookVerifier.verify_payload_signature(
+            raw_body=raw_body,
+            signature_header=request.headers.get('x-hub-signature-256'),
+            app_secret=settings.meta_whatsapp_app_secret,
+        )
+    except MetaWhatsAppWebhookVerificationError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=str(exc),
+        ) from exc
+
+    try:
+        payload = json.loads(raw_body.decode('utf-8')) if raw_body else {}
+    except json.JSONDecodeError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail='Payload JSON inválido.',
+        ) from exc
+
     parsed = MetaWebhookParser.parse(payload)
     processed_changes = BookingWhatsAppService().process_webhook_events(
         db=db,

@@ -1,6 +1,7 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 
 from app.core.config import settings
+from app.core.rate_limit import rate_limit_admin_login
 from app.core.security import (
     create_admin_access_token,
     is_admin_auth_configured,
@@ -17,7 +18,11 @@ router = APIRouter(prefix="/admin/auth", tags=["admin-auth"])
 
 
 @router.post("/login", response_model=AdminLoginResponse)
-def admin_login(payload: AdminLoginRequest) -> AdminLoginResponse:
+def admin_login(
+    payload: AdminLoginRequest,
+    request: Request,
+) -> AdminLoginResponse:
+    rate_limit_admin_login(request)
     if not is_admin_auth_configured():
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
