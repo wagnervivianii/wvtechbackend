@@ -15,8 +15,9 @@ from app.core.config import settings
 app = FastAPI(
     title=settings.app_name,
     version='0.1.0',
-    docs_url='/docs',
-    redoc_url='/redoc',
+    docs_url=None if settings.app_env == 'production' else '/docs',
+    redoc_url=None if settings.app_env == 'production' else '/redoc',
+    openapi_url=None if settings.app_env == 'production' else '/openapi.json',
 )
 
 app.include_router(health_router)
