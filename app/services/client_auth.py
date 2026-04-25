@@ -15,6 +15,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
+from app.core.public_url_security import validate_public_redirect_uri
 from app.core.security import (
     create_client_access_token,
     create_client_google_state_token,
@@ -441,6 +442,7 @@ def get_client_me(db: Session, claims: dict[str, object]) -> ClientMeResponse:
 
 
 def start_client_google_auth(*, redirect_uri: str, invite_token: str | None = None) -> ClientGoogleStartResponse:
+    safe_redirect_uri = validate_public_redirect_uri(redirect_uri)
     if not settings.client_google_oauth_client_id or not settings.client_google_oauth_client_secret:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -448,13 +450,13 @@ def start_client_google_auth(*, redirect_uri: str, invite_token: str | None = No
         )
 
     state = create_client_google_state_token(
-        redirect_uri=redirect_uri,
+        redirect_uri=safe_redirect_uri,
         invite_token=invite_token,
     )
     query = urlencode(
         {
             'client_id': settings.client_google_oauth_client_id,
-            'redirect_uri': redirect_uri,
+            'redirect_uri': safe_redirect_uri,
             'response_type': 'code',
             'scope': settings.client_google_oauth_scope,
             'state': state,
@@ -630,8 +632,9 @@ def exchange_client_google_auth(
     payload: ClientGoogleExchangeRequest,
 ) -> ClientGoogleExchangeResponse:
     state_payload = decode_client_google_state_token(payload.state)
-    expected_redirect_uri = str(state_payload.get('redirect_uri') or '').strip()
-    if expected_redirect_uri != payload.redirect_uri:
+    expected_redirect_uri = validate_public_redirect_uri(str(state_payload.get('redirect_uri') or '').strip())
+    safe_redirect_uri = validate_public_redirect_uri(payload.redirect_uri)
+    if expected_redirect_uri != safe_redirect_uri:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail='State inválido ou expirado.',
@@ -639,7 +642,7 @@ def exchange_client_google_auth(
 
     invite_token = state_payload.get('invite_token')
     invite_value = str(invite_token).strip() if invite_token else None
-    profile = _exchange_google_code_for_profile(code=payload.code, redirect_uri=payload.redirect_uri)
+    profile = _exchange_google_code_for_profile(code=payload.code, redirect_uri=safe_redirect_uri)
     account = _resolve_account_for_google_login(
         db,
         profile=profile,

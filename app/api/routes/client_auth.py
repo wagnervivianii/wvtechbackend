@@ -34,8 +34,10 @@ router = APIRouter(prefix='/client/auth', tags=['client-auth'])
 @router.get('/invites/{invite_token}', response_model=ClientInvitePreviewResponse)
 def get_client_invite_preview(
     invite_token: str,
+    request: Request,
     db: Session = Depends(get_db),
 ) -> ClientInvitePreviewResponse:
+    rate_limit_client_auth(request)
     return preview_client_invite(db, invite_token)
 
 
@@ -81,9 +83,11 @@ def post_client_reset_password(
 
 @router.get('/google/start', response_model=ClientGoogleStartResponse)
 def get_client_google_start(
+    request: Request,
     redirect_uri: str = Query(..., min_length=1, max_length=2048),
     invite_token: str | None = Query(None, min_length=20, max_length=1024),
 ) -> ClientGoogleStartResponse:
+    rate_limit_client_auth(request)
     return start_client_google_auth(redirect_uri=redirect_uri, invite_token=invite_token)
 
 

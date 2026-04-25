@@ -3,7 +3,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime
 import hashlib
-from pathlib import Path
 from zoneinfo import ZoneInfo
 
 from fastapi import HTTPException, UploadFile, status
@@ -11,6 +10,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
+from app.core.upload_security import validate_upload_payload
 from app.models.client_workspace import ClientWorkspace
 from app.models.client_workspace_account import ClientWorkspaceAccount
 from app.models.client_workspace_file import ClientWorkspaceFile
@@ -36,7 +36,6 @@ from app.services.google_drive import (
     upload_bytes_to_google_drive_folder,
 )
 
-ALLOWED_EXTENSIONS = {'.pdf', '.xls', '.xlsx', '.csv', '.ppt', '.pptx', '.doc', '.docx', '.txt'}
 ALLOWED_CATEGORIES = {'client_upload', 'admin_material', 'generated_document'}
 ALLOWED_TARGET_BUCKETS = {'client_uploads', 'generated_documents', 'archive'}
 
@@ -64,40 +63,24 @@ def _now_local() -> datetime:
     return datetime.now(ZoneInfo(settings.app_timezone))
 
 
-def _normalize_extension(file_name: str) -> str:
-    return Path(file_name).suffix.strip().lower()
-
-
-def _validate_file_extension(file_name: str) -> str:
-    extension = _normalize_extension(file_name)
-    if extension not in ALLOWED_EXTENSIONS:
+def _clean_optional_text(value: str | None, *, max_length: int, field_label: str) -> str | None:
+    if value is None:
+        return None
+    cleaned = ' '.join(value.strip().split())
+    if not cleaned:
+        return None
+    if len(cleaned) > max_length:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail='Tipo de arquivo não permitido. Use PDF, Excel, PowerPoint, Word ou TXT.',
+            detail=f'{field_label} excede o limite de {max_length} caracteres.',
         )
-    return extension
+    return cleaned
 
 
-def _prepare_upload(file_name: str, file_bytes: bytes, mime_type: str | None) -> PreparedUpload:
-    if not file_name.strip():
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail='Nome do arquivo inválido.',
-        )
-    if not file_bytes:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail='O arquivo enviado está vazio.',
-        )
-    if len(file_bytes) > settings.google_drive_direct_upload_max_bytes:
-        raise HTTPException(
-            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-            detail='O arquivo excede o limite configurado para upload direto ao Google Drive.',
-        )
-    extension = _validate_file_extension(file_name)
+def _prepare_upload(file_name: str, file_bytes: bytes, mime_type: str | None, extension: str) -> PreparedUpload:
     checksum = hashlib.sha256(file_bytes).hexdigest()
     return PreparedUpload(
-        file_name=file_name.strip(),
+        file_name=file_name,
         mime_type=mime_type,
         file_extension=extension,
         file_size_bytes=len(file_bytes),
@@ -108,7 +91,13 @@ def _prepare_upload(file_name: str, file_bytes: bytes, mime_type: str | None) ->
 
 async def read_upload_file(upload: UploadFile) -> PreparedUpload:
     file_bytes = await upload.read()
-    return _prepare_upload(upload.filename or 'arquivo', file_bytes, upload.content_type)
+    metadata = validate_upload_payload(upload=upload, file_bytes=file_bytes)
+    return _prepare_upload(
+        metadata.file_name,
+        file_bytes,
+        metadata.mime_type,
+        metadata.file_extension,
+    )
 
 
 def _get_workspace_or_404(db: Session, workspace_id: int) -> ClientWorkspace:
@@ -219,14 +208,15 @@ def _serialize_admin_file(item: ClientWorkspaceFile) -> AdminClientWorkspaceFile
 
 
 def _serialize_client_file(item: ClientWorkspaceFile) -> ClientPortalWorkspaceFileItem:
+    is_client_visible = item.review_status == APPROVED and item.visibility_scope == CLIENT_VISIBLE
     return ClientPortalWorkspaceFileItem(
         id=item.id,
         meeting_id=item.meeting_id,
         file_category=item.file_category,
         display_name=item.display_name,
         description=item.description,
-        drive_file_name=item.drive_file_name,
-        drive_web_view_link=item.drive_web_view_link,
+        drive_file_name=item.drive_file_name if is_client_visible else item.display_name,
+        drive_web_view_link=item.drive_web_view_link if is_client_visible else None,
         mime_type=item.mime_type,
         file_extension=item.file_extension,
         file_size_bytes=item.file_size_bytes,
@@ -335,6 +325,9 @@ def client_upload_workspace_file(
     except GoogleDriveIntegrationError as exc:
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=f'Não foi possível enviar o arquivo ao Google Drive. {exc}') from exc
 
+    safe_display_name = _clean_optional_text(display_name, max_length=160, field_label='Nome de exibição')
+    safe_description = _clean_optional_text(description, max_length=1000, field_label='Descrição')
+
     item = _create_file_record(
         db,
         workspace=workspace,
@@ -345,8 +338,8 @@ def client_upload_workspace_file(
         file_category='client_upload',
         visibility_scope=ADMIN_ONLY,
         review_status=PENDING_REVIEW,
-        display_name=display_name,
-        description=description,
+        display_name=safe_display_name,
+        description=safe_description,
         drive_file_id=drive_file.file_id,
         drive_file_name=drive_file.file_name,
         drive_web_view_link=drive_file.web_view_link,
@@ -392,6 +385,10 @@ def admin_upload_workspace_file(
         )
     except GoogleDriveIntegrationError as exc:
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=f'Não foi possível enviar o arquivo ao Google Drive. {exc}') from exc
+
+    safe_display_name = _clean_optional_text(display_name, max_length=160, field_label='Nome de exibição')
+    safe_description = _clean_optional_text(description, max_length=1000, field_label='Descrição')
+
     item = _create_file_record(
         db,
         workspace=workspace,
@@ -402,8 +399,8 @@ def admin_upload_workspace_file(
         file_category=normalized_category,
         visibility_scope=CLIENT_VISIBLE if visible_to_client else ADMIN_ONLY,
         review_status=APPROVED,
-        display_name=display_name,
-        description=description,
+        display_name=safe_display_name,
+        description=safe_description,
         drive_file_id=drive_file.file_id,
         drive_file_name=drive_file.file_name,
         drive_web_view_link=drive_file.web_view_link,
