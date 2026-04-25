@@ -14,6 +14,8 @@ from app.schemas.admin_client_workspaces import (
     AdminClientWorkspaceMeetingArtifactBatchSyncRequest,
     AdminClientWorkspaceMeetingArtifactBatchSyncResponse,
     AdminClientWorkspaceInviteRefreshRequest,
+    AdminClientWorkspaceLifecycleRequest,
+    AdminClientWorkspaceLifecycleResponse,
     AdminClientWorkspaceListResponse,
     AdminClientWorkspaceMeetingArtifactItem,
     AdminClientWorkspaceMeetingArtifactSyncResponse,
@@ -25,6 +27,11 @@ from app.services.admin_client_workspaces import (
     provision_client_workspace_for_booking,
     regenerate_client_workspace_invite,
     sync_client_workspace_drive_folders,
+)
+from app.services.workspace_lifecycle import (
+    archive_client_workspace,
+    reactivate_client_workspace,
+    suspend_client_workspace,
 )
 from app.services.client_workspace_artifacts import (
     get_workspace_artifacts_for_admin,
@@ -108,6 +115,48 @@ def post_admin_client_workspace_drive_sync(
         db=db,
         workspace_id=workspace_id,
     )
+
+
+@router.post(
+    "/client-workspaces/{workspace_id}/suspend",
+    response_model=AdminClientWorkspaceLifecycleResponse,
+)
+def post_admin_client_workspace_suspend(
+    workspace_id: int,
+    payload: AdminClientWorkspaceLifecycleRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+) -> AdminClientWorkspaceLifecycleResponse:
+    rate_limit_admin_write(request)
+    return suspend_client_workspace(db=db, workspace_id=workspace_id, payload=payload)
+
+
+@router.post(
+    "/client-workspaces/{workspace_id}/archive",
+    response_model=AdminClientWorkspaceLifecycleResponse,
+)
+def post_admin_client_workspace_archive(
+    workspace_id: int,
+    payload: AdminClientWorkspaceLifecycleRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+) -> AdminClientWorkspaceLifecycleResponse:
+    rate_limit_admin_write(request)
+    return archive_client_workspace(db=db, workspace_id=workspace_id, payload=payload)
+
+
+@router.post(
+    "/client-workspaces/{workspace_id}/reactivate",
+    response_model=AdminClientWorkspaceLifecycleResponse,
+)
+def post_admin_client_workspace_reactivate(
+    workspace_id: int,
+    payload: AdminClientWorkspaceLifecycleRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+) -> AdminClientWorkspaceLifecycleResponse:
+    rate_limit_admin_write(request)
+    return reactivate_client_workspace(db=db, workspace_id=workspace_id, payload=payload)
 
 
 @router.get("/client-workspaces/{workspace_id}/artifacts", response_model=AdminClientWorkspaceArtifactsResponse)

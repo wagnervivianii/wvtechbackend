@@ -37,6 +37,27 @@ class AdminClientWorkspaceInviteRefreshRequest(BaseModel):
     )
 
 
+class AdminClientWorkspaceLifecycleRequest(BaseModel):
+    model_config = ConfigDict(str_strip_whitespace=True)
+
+    reason: str | None = Field(
+        None,
+        max_length=1000,
+        description="Motivo administrativo para a alteração do ciclo de vida.",
+    )
+
+
+class AdminClientWorkspaceLifecycleResponse(BaseModel):
+    workspace_id: int = Field(..., description="Identificador interno do workspace")
+    previous_status: str = Field(..., description="Status anterior do workspace")
+    workspace_status: str = Field(..., description="Novo status do workspace")
+    client_access_revoked: bool = Field(..., description="Indica se o acesso do cliente foi bloqueado")
+    pending_invites_revoked: int = Field(..., description="Quantidade de convites pendentes revogados")
+    visible_meetings_hidden: int = Field(..., description="Quantidade de reuniões ocultadas do cliente")
+    admin_history_preserved: bool = Field(..., description="Indica que o histórico administrativo foi preservado")
+    message: str = Field(..., description="Resumo operacional da alteração")
+
+
 class AdminClientWorkspaceArtifactUpsertRequest(BaseModel):
     model_config = ConfigDict(str_strip_whitespace=True)
 

@@ -9,6 +9,8 @@ from app.models.client_workspace_account import ClientWorkspaceAccount
 
 ACTIVE_CLIENT_WORKSPACE_STATUSES = {'activated'}
 INVITABLE_CLIENT_WORKSPACE_STATUSES = {'provisioned', 'activated'}
+LOCKED_CLIENT_WORKSPACE_STATUSES = {'suspended', 'archived'}
+ADMIN_MUTABLE_CLIENT_WORKSPACE_STATUSES = {'provisioned', 'invited', 'activated', 'suspended'}
 
 
 def _generic_invalid_session() -> HTTPException:
@@ -66,4 +68,12 @@ def ensure_workspace_accepts_invite_activation(workspace: ClientWorkspace) -> No
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail='Este workspace não está disponível para ativação.',
+        )
+
+
+def ensure_workspace_accepts_admin_lifecycle_change(workspace: ClientWorkspace) -> None:
+    if workspace.workspace_status not in ADMIN_MUTABLE_CLIENT_WORKSPACE_STATUSES:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail='Este workspace não aceita alteração de ciclo de vida neste estado.',
         )
