@@ -85,3 +85,10 @@ def rate_limit_whatsapp_webhook(request: Request) -> None:
         request,
         RateLimitRule(name='whatsapp-webhook', max_requests=120, window_seconds=60),
     )
+
+
+def rate_limit_admin_write(request: Request) -> None:
+    _rate_limit(
+        request,
+        RateLimitRule(name='admin-write', max_requests=120, window_seconds=10 * 60),
+    )

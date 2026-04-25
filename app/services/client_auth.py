@@ -15,6 +15,12 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
+from app.core.access_control import (
+    ensure_client_token_matches_account,
+    ensure_client_workspace_is_active,
+    ensure_workspace_accepts_invite_activation,
+    parse_positive_int_claim,
+)
 from app.core.public_url_security import validate_public_redirect_uri
 from app.core.security import (
     create_client_access_token,
@@ -262,6 +268,7 @@ def complete_client_first_access(
 
     _ensure_invite_can_activate(invite)
     workspace = _get_workspace_or_404(db, invite.workspace_id)
+    ensure_workspace_accepts_invite_activation(workspace)
 
     account = _get_active_account_by_email(db, invite.invite_email)
     if account is None:
@@ -318,6 +325,9 @@ def authenticate_client_with_password(
             detail='E-mail ou senha inválidos.',
         )
 
+    workspace = _get_workspace_or_404(db, account.workspace_id)
+    ensure_client_workspace_is_active(workspace)
+
     _touch_login(db, account)
     return _build_token_response(account)
 
@@ -354,6 +364,7 @@ def _send_password_reset_email_best_effort(db: Session, account: ClientWorkspace
     raw_token = _issue_password_reset_token(db=db, account=account)
     reset_url = build_client_password_reset_url(raw_token)
     workspace = _get_workspace_or_404(db, account.workspace_id)
+    ensure_client_workspace_is_active(workspace)
     email_content = build_client_password_reset_email(
         recipient_name=account.full_name or workspace.primary_contact_name,
         reset_url=reset_url,
@@ -408,6 +419,8 @@ def reset_client_password(
         )
 
     account = _get_account_or_404(db, reset_token.account_id)
+    workspace = _get_workspace_or_404(db, account.workspace_id)
+    ensure_client_workspace_is_active(workspace)
     account.password_hash = get_password_hash(payload.password)
     account.last_login_at = _now_local()
     reset_token.used_at = _now_local()
@@ -422,15 +435,12 @@ def reset_client_password(
 
 
 def get_authenticated_client_context(db: Session, claims: dict[str, object]) -> AuthenticatedClientContext:
-    account_id = int(claims.get('sub', 0))
-    workspace_id = int(claims.get('workspace_id', 0))
+    account_id = parse_positive_int_claim(claims, 'sub')
+    workspace_id = parse_positive_int_claim(claims, 'workspace_id')
     account = _get_account_or_404(db, account_id)
     workspace = _get_workspace_or_404(db, workspace_id)
-    if account.workspace_id != workspace.id:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail='Sessão do cliente inválida.',
-        )
+    ensure_client_token_matches_account(claims=claims, account=account, workspace=workspace)
+    ensure_client_workspace_is_active(workspace)
     return AuthenticatedClientContext(account=account, workspace=workspace)
 
 
@@ -562,6 +572,8 @@ def _resolve_account_for_google_login(
 ) -> ClientWorkspaceAccount:
     account = _get_account_by_google_subject(db, profile.subject)
     if account is not None:
+        workspace = _get_workspace_or_404(db, account.workspace_id)
+        ensure_client_workspace_is_active(workspace)
         account.google_email = profile.email
         account.google_picture_url = profile.picture_url
         if profile.full_name and not account.full_name:
@@ -584,6 +596,7 @@ def _resolve_account_for_google_login(
                 detail='O e-mail da conta Google não corresponde ao convite enviado para o portal do cliente.',
             )
         workspace = _get_workspace_or_404(db, invite.workspace_id)
+        ensure_workspace_accepts_invite_activation(workspace)
         account = _get_active_account_by_email(db, profile.email)
         if account is None:
             account = ClientWorkspaceAccount(
@@ -616,6 +629,9 @@ def _resolve_account_for_google_login(
             status_code=status.HTTP_404_NOT_FOUND,
             detail='Não encontramos uma área do cliente vinculada a este e-mail. Use o link enviado pela WV Tech Solutions para ativar seu acesso.',
         )
+
+    workspace = _get_workspace_or_404(db, account.workspace_id)
+    ensure_client_workspace_is_active(workspace)
 
     account.google_subject = profile.subject
     account.google_email = profile.email
